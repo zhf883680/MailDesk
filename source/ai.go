@@ -188,6 +188,13 @@ const translateSystem = `你是一名专业的邮件翻译。把用户给出的�
 ###BODY###
 （正文的中文译文）`
 
+const htmlTranslateSystem = `你是一名专业的邮件网页翻译。用户会给你一封 HTML 格式的英文邮件，请把其中的可见文字翻译成简体中文，并原样返回完整 HTML。
+严格要求：
+1. 必须输出完整、合法的 HTML 文档，保留所有标签、属性、内联样式、表格结构与图片，不得增删或改写任何标签；
+2. 只翻译标签之间的可见文本（包括 title、alt、placeholder 等面向用户的文字），标签名、属性名、URL、颜色值、CSS 一律不改；
+3. 人名、公司名、产品名可保留英文；链接地址绝不翻译；
+4. 不要添加任何解释、注释、markdown 代码块标记或前后缀，第一个字符必须是 "<"。`
+
 const classifySystem = `你是邮件智能助理。请分析用户给出的邮件，并只输出一个 JSON 对象，不要包含 markdown 代码块或任何解释。
 JSON 字段：
 - "summary": 一句话中文摘要，不超过 40 字，说明这封邮件要做什么
@@ -222,21 +229,10 @@ func (a *AIService) process(id string) {
 
 	var firstErr error
 
-	// 1. 翻译
-	if cfg.Translate && isProbablyEnglish(email.Subject+" "+body) {
-		out, err := a.chat(cfg, translateSystem, meta, 0.2)
-		if err != nil {
+	// 1. 翻译（auto 模式随流水线处理；manual 模式由用户在阅读页点击时触发）
+	if cfg.Translate && cfg.TranslateMode != "manual" && isProbablyEnglish(email.Subject+" "+body) {
+		if err := a.translateNow(email, cfg); err != nil && firstErr == nil {
 			firstErr = err
-		} else {
-			sub, txt := parseTranslation(out)
-			a.st.Update(id, func(e *Email) {
-				if sub != "" {
-					e.SubjectZh = sub
-				}
-				if txt != "" {
-					e.Translated = txt
-				}
-			})
 		}
 	}
 
@@ -319,6 +315,7 @@ func (a *AIService) Reanalyze(id string) {
 		e.AIStatus = "pending"
 		e.RuleResults = nil
 		e.Translated = ""
+		e.TranslatedHTML = ""
 		e.SubjectZh = ""
 		e.Summary = ""
 		e.Importance = ""
@@ -327,6 +324,107 @@ func (a *AIService) Reanalyze(id string) {
 		e.Category = ""
 	})
 	a.Enqueue(id)
+}
+
+// ---------- 整页 HTML 翻译 ----------
+
+var translating sync.Map
+
+// translateNow 对单封邮件执行翻译：优先整页 HTML 翻译，失败时回退纯文本翻译。
+func (a *AIService) translateNow(email *Email, cfg AIConfig) error {
+	// HTML 邮件：整页翻译，保留原网页排版
+	if strings.TrimSpace(email.HTML) != "" {
+		html := truncate(email.HTML, 100000)
+		user := "邮件主题：" + email.Subject + "\n\n" + html
+		out, err := a.chat(cfg, htmlTranslateSystem, user, 0.2)
+		if err == nil {
+			out = stripFences(out)
+			if strings.Contains(out, "<") && len(out) > 100 {
+				subZh := ""
+				if s2, err := a.chat(cfg, "把下面的邮件主题翻译成简体中文，只输出译文本身：", email.Subject, 0.2); err == nil {
+					subZh = strings.TrimSpace(strings.Trim(s2, "\"'“” \n"))
+				}
+				text := htmlToText(out)
+				a.st.Update(email.ID, func(e *Email) {
+					e.TranslatedHTML = out
+					if text != "" {
+						e.Translated = truncate(text, 60000)
+					}
+					if subZh != "" {
+						e.SubjectZh = subZh
+					}
+				})
+				return nil
+			}
+		}
+		// 整页翻译失败，回退纯文本
+	}
+
+	body := email.Text
+	if strings.TrimSpace(body) == "" {
+		body = htmlToText(email.HTML)
+	}
+	maxChars := cfg.MaxChars
+	if maxChars <= 0 {
+		maxChars = 6000
+	}
+	body = truncate(body, maxChars)
+	meta := fmt.Sprintf("发件人：%s <%s>\n主题：%s\n\n正文：\n%s", email.FromName, email.FromAddr, email.Subject, body)
+	out, err := a.chat(cfg, translateSystem, meta, 0.2)
+	if err != nil {
+		return err
+	}
+	sub, txt := parseTranslation(out)
+	a.st.Update(email.ID, func(e *Email) {
+		if sub != "" {
+			e.SubjectZh = sub
+		}
+		if txt != "" {
+			e.Translated = txt
+		}
+	})
+	return nil
+}
+
+// TranslateEmail 手动触发单封邮件翻译（页面点击时）。返回最新邮件。
+func (a *AIService) TranslateEmail(id string) (*Email, error) {
+	email := a.st.Copy(id)
+	if email == nil {
+		return nil, errors.New("邮件不存在")
+	}
+	if email.TranslatedHTML != "" || email.Translated != "" {
+		return a.st.Get(id), nil
+	}
+	if _, loaded := translating.LoadOrStore(id, true); loaded {
+		return nil, errors.New("正在翻译中，请稍候")
+	}
+	defer translating.Delete(id)
+	cfg := a.cm.Get().AI
+	if !cfg.Enabled || strings.TrimSpace(cfg.APIKey) == "" {
+		return nil, errors.New("尚未配置 AI 接口")
+	}
+	if !cfg.Translate {
+		return nil, errors.New("翻译功能未开启，请在设置中启用")
+	}
+	if !isProbablyEnglish(email.Subject + " " + email.Text) {
+		return a.st.Get(id), nil // 中文邮件无需翻译
+	}
+	if err := a.translateNow(email, cfg); err != nil {
+		return nil, err
+	}
+	return a.st.Get(id), nil
+}
+
+func stripFences(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "```") {
+		s = strings.TrimPrefix(s, "```html")
+		s = strings.TrimPrefix(s, "```")
+		if i := strings.LastIndex(s, "```"); i >= 0 {
+			s = s[:i]
+		}
+	}
+	return strings.TrimSpace(s)
 }
 
 func parseTranslation(out string) (subject, body string) {

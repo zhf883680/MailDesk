@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import Icon from './Icon.vue'
+import Logo from './Logo.vue'
 import { api } from '../api'
 import { login, state } from '../store'
 
@@ -54,7 +55,7 @@ async function submit() {
   <div class="login-wrap">
     <section class="login-art">
       <div class="brand-line">
-        <span class="brand-mark"><Icon name="mail" :size="17" /></span>
+        <span class="brand-mark"><Logo :size="22" /></span>
         MailDesk
       </div>
       <div>

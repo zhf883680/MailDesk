@@ -42,6 +42,7 @@ export const api = {
   flags: (id, data) => request(`emails/${encodeURIComponent(id)}/flags`, { method: 'POST', body: data }),
   removeEmail: (id) => request('emails/' + encodeURIComponent(id), { method: 'DELETE' }),
   analyze: (id) => request(`emails/${encodeURIComponent(id)}/analyze`, { method: 'POST' }),
+  translate: (id) => request(`emails/${encodeURIComponent(id)}/translate`, { method: 'POST' }),
   syncAll: () => request('sync', { method: 'POST' }),
   syncMailbox: (id) => request(`mailboxes/${id}/sync`, { method: 'POST' }),
   saveMailbox: (id, data) => request(id ? `mailboxes/${id}` : 'mailboxes', { method: id ? 'PUT' : 'POST', body: data }),

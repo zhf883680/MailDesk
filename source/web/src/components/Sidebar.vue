@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import Icon from './Icon.vue'
+import Logo from './Logo.vue'
 import { state, openMailbox, openCompose, logout, syncAll } from '../store'
 
 const emit = defineEmits(['open-settings'])
@@ -48,7 +49,7 @@ function compose() {
 <template>
   <aside class="sidebar" :class="{ open: state.sidebarOpen }">
     <div class="side-brand">
-      <span class="brand-mark"><Icon name="mail" :size="16" /></span>
+      <span class="brand-mark"><Logo :size="26" /></span>
       <div>
         <div class="name">MailDesk</div>
         <div class="sub">AI Mail Console</div>

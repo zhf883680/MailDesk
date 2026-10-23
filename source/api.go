@@ -575,6 +575,17 @@ func (s *Server) handleEmails(w http.ResponseWriter, r *http.Request, parts []st
 		case "analyze":
 			s.ai.Reanalyze(id)
 			ok(w, map[string]string{"status": "queued"})
+		case "translate":
+			if s.st.Get(id) == nil {
+				fail(w, 404, "邮件不存在")
+				return
+			}
+			e, err := s.ai.TranslateEmail(id)
+			if err != nil {
+				fail(w, 500, err.Error())
+				return
+			}
+			ok(w, e)
 		case "forward":
 			if s.st.Get(id) == nil {
 				fail(w, 404, "邮件不存在")

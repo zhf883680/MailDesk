@@ -7,24 +7,34 @@ import {
 import { api } from '../api'
 import { fmtFull, fmtTime, initials, colorFor, importanceLabel, renderMarkdownish } from '../utils'
 
-const bodyMode = ref('both')
-const showOriginal = ref(true)
-const htmlView = ref(false)
+const bodyLang = ref('raw') // raw=原文, zh=译文
+const translating = ref(false)
 const confirmDelete = ref(false)
 
 const mail = computed(() => state.selected)
-const hasTrans = computed(() => !!(mail.value && mail.value.translated))
+const hasTrans = computed(() => !!(mail.value && (mail.value.translated_html || mail.value.translated)))
 const mailbox = computed(() => state.mailboxes.find((m) => m.id === mail.value?.mailbox_id))
 
 watch(() => state.selected?.id, () => {
-  bodyMode.value = hasTrans.value ? 'both' : 'raw'
-  showOriginal.value = true
-  htmlView.value = false
+  bodyLang.value = 'raw'
+  translating.value = false
   confirmDelete.value = false
 })
-watch(hasTrans, (v) => {
-  if (v && bodyMode.value === 'raw') bodyMode.value = 'both'
-})
+
+async function showTranslated() {
+  bodyLang.value = 'zh'
+  if (hasTrans.value || translating.value || !mail.value) return
+  translating.value = true
+  try {
+    const e = await api.translate(mail.value.id)
+    if (state.selected?.id === e.id) state.selected = e
+  } catch (err) {
+    toast(err.message, 'err')
+    bodyLang.value = 'raw'
+  } finally {
+    translating.value = false
+  }
+}
 
 const aiDone = computed(() => mail.value && mail.value.ai_status === 'done')
 const aiPending = computed(() => mail.value && (mail.value.ai_status === 'pending' || mail.value.ai_status === 'running'))
@@ -207,47 +217,42 @@ function toList() {
         <div v-else class="rule-body" v-html="renderMarkdownish(r.content)"></div>
       </div>
 
-      <!-- 正文 -->
+      <!-- 正文：原文 / 整页译文 切换 -->
       <div class="mail-body-wrap">
         <div class="body-toolbar">
-          <div v-if="hasTrans" class="seg">
-            <button :class="{ on: bodyMode === 'both' }" @click="bodyMode = 'both'">对照</button>
-            <button :class="{ on: bodyMode === 'zh' }" @click="bodyMode = 'zh'">仅译文</button>
-            <button :class="{ on: bodyMode === 'raw' }" @click="bodyMode = 'raw'">仅原文</button>
+          <div class="seg">
+            <button :class="{ on: bodyLang === 'raw' }" @click="bodyLang = 'raw'">原文</button>
+            <button :class="{ on: bodyLang === 'zh' }" @click="showTranslated">
+              <Icon v-if="translating" name="refresh" :size="11" class="spin" />
+              译文
+            </button>
           </div>
+          <span v-if="hasTrans && mail.subject_zh" class="trans-note" style="margin-bottom: 0"><Icon name="languages" :size="11" /> {{ mail.subject_zh }}</span>
           <div class="grow" style="flex: 1"></div>
-          <button v-if="mail.html" class="btn btn-sm btn-ghost" @click="htmlView = !htmlView">
-            <Icon name="external" :size="13" /> {{ htmlView ? '纯文本' : '网页原文' }}
-          </button>
         </div>
 
-        <template v-if="!htmlView">
-          <template v-if="hasTrans && bodyMode !== 'raw'">
-            <span class="trans-note"><Icon name="languages" :size="11" /> AI 译文</span>
-            <div class="mail-body translated">{{ mail.translated }}</div>
-          </template>
-
-          <div v-if="hasTrans && bodyMode === 'both' && showOriginal" class="original-block">
-            <button class="original-toggle" @click="showOriginal = false">
-              <Icon name="chevronDown" :size="13" /> 英文原文
-            </button>
-            <div class="original-body">{{ mail.text }}</div>
+        <template v-if="mail.html">
+          <div v-if="translating" class="html-translating">
+            <Icon name="refresh" :size="15" class="spin" />
+            正在翻译整页内容，保持原网页排版…（约需十几秒）
           </div>
-          <button v-else-if="hasTrans && bodyMode === 'both' && !showOriginal" class="original-toggle" @click="showOriginal = true">
-            <Icon name="chevronRight" :size="13" /> 展开英文原文
-          </button>
-
-          <div v-if="!hasTrans || bodyMode === 'raw'" class="mail-body">{{ mail.text || '（无文本内容，请切换到网页原文查看）' }}</div>
+          <iframe
+            v-else
+            class="html-frame"
+            :srcdoc="bodyLang === 'zh' && mail.translated_html ? mail.translated_html : mail.html"
+            sandbox="allow-popups allow-popups-to-escape-sandbox"
+            referrerpolicy="no-referrer"
+          ></iframe>
+          <div v-if="bodyLang === 'zh' && !mail.translated_html && hasTrans" class="mail-body translated" style="margin-top: 4px">{{ mail.translated }}</div>
         </template>
 
-        <iframe
-          v-else
-          class="html-frame"
-          :srcdoc="mail.html"
-          sandbox="allow-popups allow-popups-to-escape-sandbox"
-          referrerpolicy="no-referrer"
-          style="height: 560px"
-        ></iframe>
+        <template v-else>
+          <div v-if="translating" class="html-translating">
+            <Icon name="refresh" :size="15" class="spin" /> 正在翻译…
+          </div>
+          <div v-else-if="bodyLang === 'zh' && mail.translated" class="mail-body translated">{{ mail.translated }}</div>
+          <div v-else class="mail-body">{{ mail.text || '（无文本内容）' }}</div>
+        </template>
       </div>
     </div>
   </section>

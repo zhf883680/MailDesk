@@ -22,14 +22,15 @@ import (
 // ---------- 数据模型 ----------
 
 type AIConfig struct {
-	Enabled     bool    `json:"enabled"`
-	BaseURL     string  `json:"base_url"`
-	APIKey      string  `json:"api_key"`
-	Model       string  `json:"model"`
-	Temperature float64 `json:"temperature"`
-	Translate   bool    `json:"translate"`
-	Classify    bool    `json:"classify"`
-	MaxChars    int     `json:"max_chars"`
+	Enabled       bool    `json:"enabled"`
+	BaseURL       string  `json:"base_url"`
+	APIKey        string  `json:"api_key"`
+	Model         string  `json:"model"`
+	Temperature   float64 `json:"temperature"`
+	Translate     bool    `json:"translate"`
+	TranslateMode string  `json:"translate_mode"` // auto=收到即翻译, manual=阅读时点击翻译
+	Classify      bool    `json:"classify"`
+	MaxChars      int     `json:"max_chars"`
 }
 
 type Mailbox struct {
@@ -148,6 +149,9 @@ func newConfigManager(dir string) (*ConfigManager, error) {
 	}
 	if cfg.AI.MaxChars <= 0 {
 		cfg.AI.MaxChars = 6000
+	}
+	if cfg.AI.TranslateMode == "" {
+		cfg.AI.TranslateMode = "auto"
 	}
 	if cfg.SyncMinutes <= 0 {
 		cfg.SyncMinutes = 5

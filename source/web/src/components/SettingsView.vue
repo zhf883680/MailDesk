@@ -514,8 +514,16 @@ const vTrans = '{{translation}}'
             <div class="divider"></div>
 
             <div style="display: flex; gap: 26px; flex-wrap: wrap">
-              <label class="switch"><input type="checkbox" v-model="aiForm.translate" /><span class="track"></span>英文邮件自动翻译成中文</label>
+              <label class="switch"><input type="checkbox" v-model="aiForm.translate" /><span class="track"></span>英文邮件翻译成中文</label>
               <label class="switch"><input type="checkbox" v-model="aiForm.classify" /><span class="track"></span>AI 判断重要度 / 待办 / 广告</label>
+            </div>
+
+            <div v-if="aiForm.translate" class="field" style="margin-top: 16px; max-width: 380px">
+              <label>翻译方式</label>
+              <select v-model="aiForm.translate_mode" class="input">
+                <option value="auto">默认翻译 —— 收到邮件后自动翻译</option>
+                <option value="manual">点击时翻译 —— 阅读时点「译文」才翻译</option>
+              </select>
             </div>
 
             <div class="form-actions">

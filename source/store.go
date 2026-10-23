@@ -48,17 +48,18 @@ type Email struct {
 	Flagged   bool      `json:"flagged"`
 	Size      uint32    `json:"size"`
 
-	AIStatus    string       `json:"ai_status"` // off|pending|running|done|error
-	SubjectZh   string       `json:"subject_zh"`
-	Translated  string       `json:"translated"`
-	Summary     string       `json:"summary"`
-	Importance  string       `json:"importance"` // high|medium|low
-	NeedAction  bool         `json:"need_action"`
-	IsAd        bool         `json:"is_ad"`
-	Category    string       `json:"category"`
-	RuleResults []RuleResult `json:"rule_results"`
-	AIAt        time.Time    `json:"ai_at"`
-	AIError     string       `json:"ai_error"`
+	AIStatus       string       `json:"ai_status"` // off|pending|running|done|error
+	SubjectZh      string       `json:"subject_zh"`
+	Translated     string       `json:"translated"`
+	TranslatedHTML string       `json:"translated_html,omitempty"`
+	Summary        string       `json:"summary"`
+	Importance     string       `json:"importance"` // high|medium|low
+	NeedAction     bool         `json:"need_action"`
+	IsAd           bool         `json:"is_ad"`
+	Category       string       `json:"category"`
+	RuleResults    []RuleResult `json:"rule_results"`
+	AIAt           time.Time    `json:"ai_at"`
+	AIError        string       `json:"ai_error"`
 
 	Forwarded  bool         `json:"forwarded"`
 	ForwardLog []ForwardLog `json:"forward_log"`
@@ -92,7 +93,7 @@ func (e *Email) ToSummary() EmailSummary {
 		FromAddr: e.FromAddr, Date: e.Date, Snippet: e.Snippet, Seen: e.Seen,
 		Flagged: e.Flagged, AIStatus: e.AIStatus, Summary: e.Summary,
 		Importance: e.Importance, NeedAction: e.NeedAction, IsAd: e.IsAd,
-		Category: e.Category, HasTrans: e.Translated != "", RuleCount: len(e.RuleResults),
+		Category: e.Category, HasTrans: e.Translated != "" || e.TranslatedHTML != "", RuleCount: len(e.RuleResults),
 		Forwarded: e.Forwarded,
 	}
 }
@@ -316,6 +317,7 @@ func (s *Store) MergeFetched(mb string, fetched []*Email) (added, needAI []*Emai
 			e.AIStatus = old.AIStatus
 			e.SubjectZh = old.SubjectZh
 			e.Translated = old.Translated
+			e.TranslatedHTML = old.TranslatedHTML
 			e.Summary = old.Summary
 			e.Importance = old.Importance
 			e.NeedAction = old.NeedAction

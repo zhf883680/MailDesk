@@ -12,7 +12,7 @@
 | --- | --- |
 | 多邮箱接入 | 任意支持 IMAP / SMTP 的邮箱，内置 Gmail、Outlook、QQ、163、126、阿里企业邮、iCloud 预设 |
 | 自定义 AI 接口 | OpenAI 兼容协议，Base URL / API Key / 模型全部可填（OpenAI、DeepSeek、Moonshot、one-api、Ollama…） |
-| 英文邮件自动翻译 | 识别到英文邮件时自动译为简体中文，阅读页「译文 → 原文」上下对照，可切换仅译文 / 仅原文 |
+| 英文邮件整页翻译 | 阅读页默认显示网页原文（原版 HTML 排版），点「译文」把整页 HTML 翻成中文后同样以原版排版展示；翻译方式可在设置里选「默认翻译」（收到即自动翻译）或「点击时翻译」（阅读时点译文才翻译） |
 | 自定义规则 | 命中关键词、发件人或收件人后，用你的提示词让 AI 提炼，结果以卡片形式展示在邮件页 |
 | 关键词转发 Bark | 命中关键词的新邮件实时推送到手机 Bark，自动识别验证码，可限定邮箱、自定义标题与正文模板 |
 | 首页汇总 | 未读 / 重要 / 待处理 / 广告四项统计，AI 今日简报，按邮箱分组概览 |
@@ -116,7 +116,7 @@ one-api/中转   https://你的域名/v1                 按中转配置填写
 
 填好后点「测试连接」，返回「AI 接口连通正常」即可。之后每封新邮件会自动走三步：
 
-1. **翻译**：判断为英文时输出中文，主题与正文都翻译；
+1. **翻译**：判断为英文时把整页 HTML（无 HTML 则纯文本正文）译为中文，主题单独翻译，保留原网页排版；由「翻译方式」决定是收信时自动执行还是阅读时点击触发；
 2. **分级**：一句话摘要 + 重要度 + 是否需处理 + 是否广告 + 分类；
 3. **规则**：逐条匹配你配置的智能规则，命中则用对应提示词处理。
 
@@ -295,44 +295,6 @@ api.go      HTTP 接口、鉴权、IP 锁定、定时同步
 demo.go     演示数据
 web/        Vue 3 前端
 ```
-
----
-
-## Docker 部署
-
-仓库内的 `Dockerfile` 会在镜像构建阶段编译 Vue 前端和 Go 后端，最终镜像同时支持 `linux/amd64` 与 `linux/arm64`。
-
-推送到 `main` / `master` 分支、创建 `v*` 标签或手动触发 workflow 时，GitHub Actions 会自动构建并推送镜像到 GitHub Container Registry：
-
-```text
-ghcr.io/<GitHub 用户名>/<仓库名>:latest
-```
-
-首次推送后，如果希望无需登录即可拉取镜像，请到 GitHub 仓库的 **Packages** 页面，将对应容器包的可见性调整为 public。
-
-运行容器并将配置、密钥与邮件缓存持久化到 Docker volume：
-
-```bash
-docker run -d \
-  --name maildesk \
-  --restart unless-stopped \
-  -p 8080:8080 \
-  -v maildesk-data:/data \
-  ghcr.io/<GitHub 用户名>/<仓库名>:latest
-```
-
-容器内数据目录固定为 `/data`。需要使用其他端口时，覆盖启动参数：
-
-```bash
-docker run -d \
-  --name maildesk \
-  -p 9000:9000 \
-  -v maildesk-data:/data \
-  ghcr.io/<GitHub 用户名>/<仓库名>:latest \
-  -addr :9000 -data /data
-```
-
-`docker` job 使用仓库自带的 `GITHUB_TOKEN` 登录并推送，无需另外添加密码。
 
 ---
 
