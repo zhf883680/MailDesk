@@ -393,8 +393,8 @@ a { color: var(--accent); text-decoration: none; }
 .handled-note button { margin-left: auto; font-size: 12px; color: var(--accent-ink); text-decoration: underline; text-underline-offset: 2px; }.forward-note .btn { margin-left: 4px; }
 .mail-body-wrap { margin-top: 24px; }
 .body-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
-.body-toolbar .seg { display: flex; background: var(--paper-2); border-radius: 8px; padding: 2px; }
-.body-toolbar .seg button { height: 26px; padding: 0 10px; border-radius: 6px; font-size: 11.5px; color: var(--muted); }
+.body-toolbar .seg { display: flex; flex: 0 0 auto; background: var(--paper-2); border-radius: 8px; padding: 2px; }
+.body-toolbar .seg button { height: 26px; padding: 0 10px; border-radius: 6px; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
 .body-toolbar .seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
 .mail-body { font-size: 14px; line-height: 1.9; color: #2b2822; white-space: pre-wrap; word-break: break-word; }
 .mail-body.translated { font-size: 14.5px; }
@@ -404,6 +404,19 @@ a { color: var(--accent); text-decoration: none; }
 .original-toggle:hover { color: var(--ink-2); }
 .original-body { font-size: 13px; line-height: 1.85; color: #6a6459; white-space: pre-wrap; word-break: break-word; }
 .html-frame { width: 100%; min-height: 420px; height: 640px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.mail-md { font-size: 14px; line-height: 1.85; color: #2b2822; }
+.mail-md h1, .mail-md h2 { font-size: 18px; }
+.mail-md h3 { font-size: 16px; }
+.mail-md h4, .mail-md h5, .mail-md h6 { font-size: 14.5px; }
+.mail-md table { font-size: 12.5px; }
+.mail-md img { display: block; margin: 10px 0; }
+.mail-md blockquote { color: var(--ink-2); }
+.md-empty {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  padding: 22px 16px; border: 1px dashed var(--line-strong); border-radius: 10px;
+  color: var(--muted); font-size: 13px;
+}
+.md-empty .btn { margin-left: auto; }
 .html-translating {
   display: flex; align-items: center; justify-content: center; gap: 10px;
   height: 320px; border: 1px dashed var(--line-strong); border-radius: 10px;
@@ -686,8 +699,9 @@ a { color: var(--accent); text-decoration: none; }
   .ai-panel { padding: 14px; border-radius: 13px; }
   .ai-summary { font-size: 13.5px; }
   .ai-meta .badge { height: 20px; font-size: 10.5px; }
-  .body-toolbar { margin-bottom: 10px; }
-  .body-toolbar .seg button { height: 32px; padding: 0 14px; font-size: 12.5px; }
+  .body-toolbar { margin-bottom: 10px; flex-wrap: wrap; }
+  .body-toolbar .seg button { height: 32px; padding: 0 13px; font-size: 12.5px; }
+  .body-toolbar .trans-note { display: none; }
   .mail-body { font-size: 14px; }
   .html-frame { height: 60dvh; }
 

@@ -12,6 +12,10 @@ import (
 	"strings"
 	"time"
 
+	md "github.com/JohannesKaufmann/html-to-markdown/v2/converter"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/base"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/commonmark"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/table"
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 	_ "github.com/emersion/go-message/charset"
@@ -332,6 +336,10 @@ func applyRawBody(e *Email, raw []byte) {
 	}
 	e.Text = normalizeText(text)
 	e.HTML = sanitizeHTML(htmlBody)
+	if e.HTML != "" {
+		// 转成 Markdown：去掉样式与冗余标签，后续翻译更省 token，展示也更干净
+		e.Markdown = htmlToMarkdown(e.HTML)
+	}
 	if e.Text == "" && e.HTML != "" {
 		e.Text = htmlToText(e.HTML)
 	}
@@ -340,6 +348,50 @@ func applyRawBody(e *Email, raw []byte) {
 	e.HTML = truncateBytes(e.HTML, 400000)
 	e.Snippet = snippetOf(e.Text)
 }
+
+// htmlToMarkdown 把已净化的 HTML 邮件转成 Markdown，去掉内联样式与布局标签。
+func htmlToMarkdown(src string) string {
+	if strings.TrimSpace(src) == "" {
+		return ""
+	}
+	out, err := mdConv.ConvertString(src)
+	if err != nil {
+		return ""
+	}
+	out = strings.TrimSpace(out)
+	out = reBlankMD.ReplaceAllString(out, "\n\n")
+	return truncate(out, 60000)
+}
+
+var reBlankMD = regexp.MustCompile(`\n{3,}`)
+
+// mdConv 带表格插件，避免账单类邮件里的表格被压成一行文字
+var mdConv = md.NewConverter(
+	md.WithPlugins(
+		base.NewBasePlugin(),
+		commonmark.NewCommonmarkPlugin(),
+		table.NewTablePlugin(table.WithHeaderPromotion(true)),
+	),
+)
+
+// markdownToText 粗略去掉 Markdown 记号，作为纯文本兜底与搜索用。
+func markdownToText(s string) string {
+	s = reMdImage.ReplaceAllString(s, "$1")
+	s = reMdLink.ReplaceAllString(s, "$1")
+	s = reMdTableSep.ReplaceAllString(s, "")
+	s = reMdMark.ReplaceAllString(s, "")
+	s = reMdHeading.ReplaceAllString(s, "$1")
+	s = strings.ReplaceAll(s, "\n", "\n")
+	return normalizeText(s)
+}
+
+var (
+	reMdImage    = regexp.MustCompile(`!\[([^\]]*)\]\([^)]*\)`)
+	reMdLink     = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	reMdTableSep = regexp.MustCompile(`(?m)^\|?[\s:-]*-[\s:|-]*\|?$`)
+	reMdMark     = regexp.MustCompile("(\\*\\*|__|`)")
+	reMdHeading  = regexp.MustCompile(`(?m)^#{1,6}\s+`)
+)
 
 var (
 	reSelfClose = regexp.MustCompile(`(?is)<(script|style|iframe|object|embed|link|meta)[^>]*/?>`)

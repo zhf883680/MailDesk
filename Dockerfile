@@ -7,7 +7,7 @@ RUN npm install --no-audit --no-fund
 COPY source/web/ ./
 RUN npm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.21.4-alpine AS server-build
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS server-build
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /app/source

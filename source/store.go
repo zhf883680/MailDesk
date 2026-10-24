@@ -44,6 +44,7 @@ type Email struct {
 	Snippet   string    `json:"snippet"`
 	Text      string    `json:"text"`
 	HTML      string    `json:"html"`
+	Markdown  string    `json:"markdown,omitempty"`
 	Seen      bool      `json:"seen"`
 	Flagged   bool      `json:"flagged"`
 	Size      uint32    `json:"size"`
@@ -52,6 +53,7 @@ type Email struct {
 	SubjectZh      string       `json:"subject_zh"`
 	Translated     string       `json:"translated"`
 	TranslatedHTML string       `json:"translated_html,omitempty"`
+	TranslatedMD   string       `json:"translated_md,omitempty"`
 	Summary        string       `json:"summary"`
 	Importance     string       `json:"importance"` // high|medium|low
 	NeedAction     bool         `json:"need_action"`
@@ -110,7 +112,7 @@ func (e *Email) ToSummary() EmailSummary {
 		FromAddr: e.FromAddr, Date: e.Date, Snippet: e.Snippet, Seen: e.Seen,
 		Flagged: e.Flagged, AIStatus: e.AIStatus, Summary: e.Summary,
 		Importance: e.Importance, NeedAction: e.EffectiveNeedAction(), IsAd: e.EffectiveIsAd(),
-		Category: e.Category, HasTrans: e.Translated != "" || e.TranslatedHTML != "", RuleCount: len(e.RuleResults),
+		Category: e.Category, HasTrans: e.Translated != "" || e.TranslatedHTML != "" || e.TranslatedMD != "", RuleCount: len(e.RuleResults),
 		Forwarded: e.Forwarded, Handled: e.Handled,
 	}
 }
@@ -335,6 +337,7 @@ func (s *Store) MergeFetched(mb string, fetched []*Email) (added, needAI []*Emai
 			e.SubjectZh = old.SubjectZh
 			e.Translated = old.Translated
 			e.TranslatedHTML = old.TranslatedHTML
+			e.TranslatedMD = old.TranslatedMD
 			e.Handled = old.Handled
 			e.AdOverride = old.AdOverride
 			e.Summary = old.Summary

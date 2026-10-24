@@ -63,6 +63,9 @@ func seedDemo(cm *ConfigManager, st *Store) {
 		e.AIStatus = "done"
 		e.AIAt = now
 		e.ID = makeID(e.MailboxID, e.UID)
+		if e.HTML != "" && e.Markdown == "" {
+			e.Markdown = htmlToMarkdown(e.HTML)
+		}
 		st.Upsert(e)
 	}
 	// —— 工作邮箱 ——
@@ -73,6 +76,16 @@ func seedDemo(cm *ConfigManager, st *Store) {
 		Date: now.Add(-42 * time.Minute), Seen: true, Flagged: true,
 		SubjectZh: "回复：第四季度推广 — 最终范围与时间表",
 		Snippet:   "Hi Alex, thanks for the revised deck. Our leadership is aligned on the scope, but we need the launch...",
+		HTML: `<div style="font-family:-apple-system,Segoe UI,sans-serif;color:#222">
+<h2 style="color:#0f6b5c">Q4 Campaign — Scope &amp; Timeline</h2>
+<p>Hi Alex, thanks for the revised deck. Our leadership is aligned on the scope, but we need the launch moved to <strong>November 18</strong> so the retail team can prepare the in-store assets.</p>
+<table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%">
+<tr style="background:#f5f1e9"><th align="left">Item</th><th align="right">Budget (USD)</th></tr>
+<tr><td>Localized landing pages (DE / FR)</td><td align="right">12,400</td></tr>
+<tr><td>Paid social creative</td><td align="right">6,800</td></tr>
+</table>
+<blockquote>Contract signing target: Friday.</blockquote>
+</div>`,
 		Text: `Hi Alex,
 
 Thanks for the revised deck — our leadership is aligned on the scope, but we need the launch moved to November 18 so the retail team can prepare the in-store assets.
@@ -95,6 +108,20 @@ Head of Brand, Brightside`,
 2. 付费社交素材由谁负责——我们还是你们团队？
 
 如果这两点都没问题，我们可以在周五前完成合同签署。
+
+祝好，
+Marta
+Brightside 品牌负责人`,
+		TranslatedMD: `## 第四季度推广 — 范围与时间表
+
+Alex 你好，感谢你修改后的方案。我们管理层对项目范围已达成一致，但需要把上线时间推迟到 **11 月 18 日**，以便零售团队准备门店物料。
+
+| 项目 | 预算（美元） |
+|:--|--:|
+| 德语 / 法语本地化落地页 | 12,400 |
+| 付费社交素材 | 6,800 |
+
+> 目标：本周五完成合同签署。
 
 祝好，
 Marta

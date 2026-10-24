@@ -188,6 +188,13 @@ const translateSystem = `你是一名专业的邮件翻译。把用户给出的�
 ###BODY###
 （正文的中文译文）`
 
+const mdTranslateSystem = `你是一名专业的邮件翻译。用户会给你一封 Markdown 格式的英文邮件，请把它翻译成自然、准确、通顺的简体中文。
+严格要求：
+1. 完整保留 Markdown 结构：标题层级（#）、列表符号（- / 1.）、表格的竖线与分隔行、引用（>）、代码块围栏、链接与图片地址，全部原样保留；
+2. 只翻译可见文字；表格只翻译单元格里的文字，不要改动列数与对齐；URL、邮箱地址、数字、金额不翻译；
+3. 人名、公司名、产品名可保留英文；
+4. 不要输出解释、注释或 markdown 代码块包裹，直接返回译文 Markdown。`
+
 const htmlTranslateSystem = `你是一名专业的邮件网页翻译。用户会给你一封 HTML 格式的英文邮件，请把其中的可见文字翻译成简体中文，并原样返回完整 HTML。
 严格要求：
 1. 必须输出完整、合法的 HTML 文档，保留所有标签、属性、内联样式、表格结构与图片，不得增删或改写任何标签；
@@ -335,9 +342,40 @@ func (a *AIService) Reanalyze(id string) {
 
 var translating sync.Map
 
+func (a *AIService) translateSubject(cfg AIConfig, subject string) string {
+	out, err := a.chat(cfg, "把下面的邮件主题翻译成简体中文，只输出译文本身：", subject, 0.2)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(strings.Trim(out, "\"'“” \n"))
+}
+
 // translateNow 对单封邮件执行翻译：优先整页 HTML 翻译，失败时回退纯文本翻译。
 func (a *AIService) translateNow(email *Email, cfg AIConfig) error {
-	// HTML 邮件：整页翻译，保留原网页排版
+	// 优先用 Markdown 翻译：结构保留、token 消耗远低于整页 HTML
+	if mdk := strings.TrimSpace(email.Markdown); mdk != "" {
+		user := "邮件主题：" + email.Subject + "\n\n" + truncate(mdk, 60000)
+		out, err := a.chat(cfg, mdTranslateSystem, user, 0.2)
+		if err == nil {
+			out = stripFences(out)
+			if len([]rune(out)) > 20 && !strings.Contains(out, "###SUBJECT###") {
+				subZh := a.translateSubject(cfg, email.Subject)
+				plain := markdownToText(out)
+				a.st.Update(email.ID, func(e *Email) {
+					e.TranslatedMD = out
+					if plain != "" {
+						e.Translated = truncate(plain, 60000)
+					}
+					if subZh != "" {
+						e.SubjectZh = subZh
+					}
+				})
+				return nil
+			}
+		}
+	}
+
+	// 没有 Markdown（转换失败）时，回退整页 HTML 翻译
 	if strings.TrimSpace(email.HTML) != "" {
 		html := truncate(email.HTML, 100000)
 		user := "邮件主题：" + email.Subject + "\n\n" + html
@@ -345,10 +383,7 @@ func (a *AIService) translateNow(email *Email, cfg AIConfig) error {
 		if err == nil {
 			out = stripFences(out)
 			if strings.Contains(out, "<") && len(out) > 100 {
-				subZh := ""
-				if s2, err := a.chat(cfg, "把下面的邮件主题翻译成简体中文，只输出译文本身：", email.Subject, 0.2); err == nil {
-					subZh = strings.TrimSpace(strings.Trim(s2, "\"'“” \n"))
-				}
+				subZh := a.translateSubject(cfg, email.Subject)
 				text := htmlToText(out)
 				a.st.Update(email.ID, func(e *Email) {
 					e.TranslatedHTML = out
@@ -397,7 +432,7 @@ func (a *AIService) TranslateEmail(id string) (*Email, error) {
 	if email == nil {
 		return nil, errors.New("邮件不存在")
 	}
-	if email.TranslatedHTML != "" || email.Translated != "" {
+	if email.TranslatedMD != "" || email.TranslatedHTML != "" || email.Translated != "" {
 		return a.st.Get(id), nil
 	}
 	if _, loaded := translating.LoadOrStore(id, true); loaded {

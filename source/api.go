@@ -735,6 +735,13 @@ func (s *Server) emailView(id string) *Email {
 	if e == nil {
 		return nil
 	}
+	// 兼容升级前缓存的老邮件：首次打开时补算 Markdown
+	if e.Markdown == "" && strings.TrimSpace(e.HTML) != "" {
+		if m := htmlToMarkdown(e.HTML); m != "" {
+			e.Markdown = m
+			s.st.Update(id, func(em *Email) { em.Markdown = m })
+		}
+	}
 	e.NeedAction = e.EffectiveNeedAction()
 	if s.cm.Get().IsAdWhitelisted(e) {
 		e.IsAd = false
