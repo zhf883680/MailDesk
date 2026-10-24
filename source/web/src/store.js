@@ -119,13 +119,24 @@ export async function loadEmails() {
     if (seq !== listSeq) return
     state.emails = rows
     // 同步刷新统计，确保计数与当前列表使用同一份配置
-    await reloadBoot()
+    await reloadStats()
   } catch (e) {
     if (seq !== listSeq) return
     if (e.status === 401) { state.authed = false; return }
     toast(e.message, 'err')
   } finally {
     if (seq === listSeq) state.listLoading = false
+  }
+}
+
+let statsSeq = 0
+export async function reloadStats() {
+  const seq = ++statsSeq
+  try {
+    const s = await api.stats()
+    if (seq === statsSeq) state.stats = s
+  } catch (e) {
+    if (e.status === 401) state.authed = false
   }
 }
 
@@ -222,7 +233,7 @@ export async function setHandled(handled) {
     item.handled = e.handled
     item.need_action = e.need_action
   }
-  await reloadBoot()
+  await reloadStats()
   toast(handled ? '已标记为处理完成' : '已恢复为待处理')
 }
 
@@ -234,7 +245,7 @@ export async function setAdOverride(value) {
   if (state.selected?.id === id) state.selected = e
   const item = state.emails.find((x) => x.id === id)
   if (item) item.is_ad = e.is_ad
-  await reloadBoot()
+  await reloadStats()
   toast(value === 'not_ad' ? '已标记为「不是广告」' : '已标记为广告')
 }
 
@@ -258,7 +269,7 @@ export async function setSeen(seen) {
   if (item) item.seen = seen
   try {
     await api.flags(state.selected.id, { seen })
-    await reloadBoot()
+    await reloadStats()
   } catch (e) {
     toast(e.message, 'err')
   }
@@ -274,7 +285,7 @@ export async function removeSelected() {
     state.selectedId = null
     state.mobilePane = 'list'
     toast('邮件已移入垃圾箱')
-    await reloadBoot()
+    await reloadStats()
   } catch (e) {
     toast(e.message, 'err')
   }

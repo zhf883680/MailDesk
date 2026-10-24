@@ -138,7 +138,7 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case "digest":
 		s.handleDigest(w, r)
 	case "stats":
-		s.handleBootstrap(w, r)
+		s.handleStats(w, r)
 	default:
 		fail(w, 404, "接口不存在")
 	}
@@ -296,6 +296,15 @@ func (s *Server) stats() Stats {
 		}
 	}
 	return st
+}
+
+// handleStats 只返回计数，供前端定时轮询；避免反复下发邮箱、AI 等配置。
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		fail(w, 405, "方法不允许")
+		return
+	}
+	ok(w, s.stats())
 }
 
 func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {

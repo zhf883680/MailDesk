@@ -85,7 +85,7 @@ a { color: var(--accent); text-decoration: none; }
 .badge-medium { background: var(--amber-soft); color: var(--amber); }
 .badge-low { background: #eef0ea; color: #6c7a70; }
 .badge-action { background: var(--accent-soft); color: var(--accent-ink); }
-.badge-ad { background: #efece6; color: #8d8477; }
+.badge-promo, .badge-muted { background: #efece6; color: #8d8477; }
 .badge-ai { background: linear-gradient(120deg, #e7f2ee, #eef1e6); color: var(--accent-ink); }
 
 .tag-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
@@ -272,7 +272,7 @@ a { color: var(--accent); text-decoration: none; }
   content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent);
 }
 .mail-item.unread .mi-sender, .mail-item.unread .mi-subject { color: var(--ink); font-weight: 600; }
-.mail-item.is-ad { opacity: 0.72; }
+.mail-item.is-promo { opacity: 0.72; }
 .mi-top { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
 .mi-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; opacity: 0; }
 .mail-item.unread .mi-dot { opacity: 1; }
@@ -298,7 +298,7 @@ a { color: var(--accent); text-decoration: none; }
 }
 .sender-info { flex: 1; min-width: 0; }
 .sender-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.sender-addr { font-size: 12px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sender-mail { font-size: 12px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sender-date { font-size: 11.5px; color: var(--muted); white-space: nowrap; text-align: right; line-height: 1.7; }
 .reader-actions { display: flex; gap: 2px; margin-left: 4px; }
 

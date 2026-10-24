@@ -1,5 +1,6 @@
 .DS_Store
 /data/
 /source/web/node_modules/
+/source/web/dist/
 /source/maildesk
 *.log

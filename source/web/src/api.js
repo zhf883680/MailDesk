@@ -31,6 +31,7 @@ export const api = {
   logout: () => request('logout', { method: 'POST' }),
   lockStatus: () => request('lock-status'),
   bootstrap: () => request('bootstrap'),
+  stats: () => request('stats'),
   emails: (params) => {
     const qs = new URLSearchParams()
     Object.entries(params || {}).forEach(([k, v]) => {

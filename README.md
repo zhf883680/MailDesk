@@ -306,7 +306,7 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o m
 | 触发方式 | 行为 |
 | --- | --- |
 | 推送到 `main` / `master` | 构建 5 个平台的压缩包，发布或更新 `v<当前版本>` Release（版本号取自 `source/main.go` 的 `appVersion`），已存在的同名文件会被覆盖 |
-| 推送 `v*` 标签 | 构建并发布同名 Release，例如 `git tag v1.3.1 && git push origin v1.3.1` |
+| 推送 `v*` 标签 | 构建并发布同名 Release，例如 `git tag v1.3.2 && git push origin v1.3.2` |
 | 手动运行 workflow | 按所选分支执行同样的构建与发布 |
 
 工作流文件为 `.github/workflows/release.yml`。发布物包括各平台 `.tar.gz` / `.zip`（内含可执行文件与 README）以及 `SHA256SUMS.txt`；Docker 镜像仍由 `.github/workflows/docker.yml` 单独构建并推送到 GHCR。
@@ -352,4 +352,4 @@ web/        Vue 3 前端
 
 ---
 
-版本 1.3.1 · 单机自部署 · 数据不出本机
+版本 1.3.2 · 单机自部署 · 数据不出本机

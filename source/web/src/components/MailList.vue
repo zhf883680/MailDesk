@@ -122,7 +122,7 @@ function importanceClass(v) {
         <button
           v-for="mail in group.items" :key="mail.id"
           class="mail-item"
-          :class="{ unread: !mail.seen, active: state.selectedId === mail.id, 'is-ad': mail.is_ad }"
+          :class="{ unread: !mail.seen, active: state.selectedId === mail.id, 'is-promo': mail.is_ad }"
           @click="selectEmail(mail.id)"
         >
           <div class="mi-top">
@@ -138,14 +138,14 @@ function importanceClass(v) {
             </span>
             <span v-else-if="mail.importance === 'medium'" class="badge badge-medium">{{ importanceLabel(mail.importance) }}</span>
             <span v-if="mail.need_action" class="badge badge-action">待处理</span>
-            <span v-if="mail.is_ad" class="badge badge-ad">广告</span>
+            <span v-if="mail.is_ad" class="badge badge-promo">广告</span>
             <span v-if="mail.handled" class="badge badge-low"><Icon name="check" :size="10" /> 已处理</span>
             <span v-if="mail.has_trans" class="badge badge-ai mi-extra"><Icon name="languages" :size="10" /> 译</span>
             <span v-if="mail.ai_status === 'pending' || mail.ai_status === 'running'" class="badge badge-ai">
               <Icon name="sparkles" :size="10" /> AI 分析中
             </span>
             <span v-if="mail.rule_count" class="badge badge-action mi-extra">{{ mail.rule_count }} 条规则结果</span>
-            <span v-if="mail.forwarded" class="badge badge-ad mi-extra"><Icon name="bell" :size="10" /> 已推送</span>
+            <span v-if="mail.forwarded" class="badge badge-muted mi-extra"><Icon name="bell" :size="10" /> 已推送</span>
             <span v-if="state.mailboxId === 'all'" class="mi-mb">
               <span class="tag-dot" :style="{ background: mailboxColor(mail.mailbox_id) }"></span>{{ mailboxName(mail.mailbox_id) }}
             </span>

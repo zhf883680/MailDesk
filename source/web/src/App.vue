@@ -9,7 +9,7 @@ import SettingsView from './components/SettingsView.vue'
 import ComposeModal from './components/ComposeModal.vue'
 import Icon from './components/Icon.vue'
 import Logo from './components/Logo.vue'
-import { state, init, reloadBoot, loadEmails, refreshSelected, openCompose, refreshData, toast } from './store'
+import { state, init, reloadBoot, reloadStats, loadEmails, refreshSelected, openCompose, refreshData, toast } from './store'
 
 let timer = null
 
@@ -19,10 +19,14 @@ function openSettings(tab) {
   state.sidebarOpen = false
 }
 
+let pollCount = 0
 async function poll() {
   if (!state.authed) return
   const hadPending = state.stats.pending_ai > 0
-  await reloadBoot()
+  pollCount++
+  // 轻量统计每 7 秒刷新；约每分钟再拉一次完整配置，同步邮箱状态与错误信息
+  if (pollCount % 9 === 0) await reloadBoot()
+  else await reloadStats()
   if (state.view === 'mailbox') {
     if (hadPending || state.stats.pending_ai > 0) {
       await loadEmails()

@@ -162,8 +162,8 @@ function toList() {
               <span class="tag-dot" :style="{ background: mailbox.color }"></span>{{ mailbox.name }}
             </span>
           </div>
-          <div class="sender-addr">{{ mail.from_addr }}</div>
-          <div class="sender-addr" style="margin-top: 4px" v-if="toList()">发给 {{ toList() }}</div>
+          <div class="sender-mail">{{ mail.from_addr }}</div>
+          <div class="sender-mail" style="margin-top: 4px" v-if="toList()">发给 {{ toList() }}</div>
         </div>
         <div class="sender-date">{{ fmtFull(mail.date) }}</div>
       </div>
@@ -214,7 +214,7 @@ function toList() {
             <span class="badge" :class="mail.handled ? 'badge-low' : mail.need_action ? 'badge-action' : 'badge-low'">
               {{ mail.handled ? '已处理' : mail.need_action ? '需要处理' : '无需处理' }}
             </span>
-            <span v-if="mail.is_ad" class="badge badge-ad">广告 / 推广</span>
+            <span v-if="mail.is_ad" class="badge badge-promo">广告 / 推广</span>
             <span v-if="mail.category" class="badge badge-low">{{ mail.category }}</span>
             <span v-if="hasTrans" class="badge badge-ai"><Icon name="languages" :size="10" /> 已译成中文</span>
           </div>
