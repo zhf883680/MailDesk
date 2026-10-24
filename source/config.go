@@ -392,6 +392,12 @@ func (cfg *Config) IsAdWhitelisted(e *Email) bool {
 	return false
 }
 
+// CountsAsAd 判断邮件是否应在统计与「广告」列表中显示。
+// 统一处理手动纠正与发件人白名单，避免统计和列表口径不一致。
+func (cfg *Config) CountsAsAd(e *Email) bool {
+	return e != nil && e.EffectiveIsAd() && !cfg.IsAdWhitelisted(e)
+}
+
 func sortMailboxes(list []Mailbox) {
 	sort.SliceStable(list, func(i, j int) bool { return list[i].Name < list[j].Name })
 }

@@ -281,7 +281,7 @@ func (s *Server) stats() Stats {
 			ms.NeedAction++
 			st.NeedAction++
 		}
-		if e.EffectiveIsAd() && !cfg.IsAdWhitelisted(e) {
+		if cfg.CountsAsAd(e) {
 			ms.Ads++
 			st.Ads++
 		}
@@ -662,7 +662,7 @@ func (s *Server) listEmails(w http.ResponseWriter, r *http.Request) {
 		if filter == "action" && !e.EffectiveNeedAction() {
 			continue
 		}
-		if filter == "ads" && (!e.EffectiveIsAd() || cfgNow.IsAdWhitelisted(e)) {
+		if filter == "ads" && !cfgNow.CountsAsAd(e) {
 			continue
 		}
 		if q != "" {
@@ -672,9 +672,7 @@ func (s *Server) listEmails(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		sum := e.ToSummary()
-		if cfgNow.IsAdWhitelisted(e) {
-			sum.IsAd = false
-		}
+		sum.IsAd = cfgNow.CountsAsAd(e)
 		out = append(out, sum)
 		if len(out) >= limit {
 			break
@@ -743,11 +741,7 @@ func (s *Server) emailView(id string) *Email {
 		}
 	}
 	e.NeedAction = e.EffectiveNeedAction()
-	if s.cm.Get().IsAdWhitelisted(e) {
-		e.IsAd = false
-	} else {
-		e.IsAd = e.EffectiveIsAd()
-	}
+	e.IsAd = s.cm.Get().CountsAsAd(e)
 	return e
 }
 

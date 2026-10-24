@@ -22,7 +22,10 @@ const subtitle = computed(() => {
 })
 
 const filters = computed(() => {
-  const s = state.stats
+  // 进入具体邮箱时使用该邮箱的计数，避免顶部数字与当前列表范围不一致
+  const s = state.mailboxId === 'all'
+    ? state.stats
+    : (state.stats.by_mailbox?.[state.mailboxId] || state.stats)
   return [
     { key: 'all', label: '全部' },
     { key: 'unread', label: '未读', n: s.unread },

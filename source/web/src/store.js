@@ -73,11 +73,9 @@ function applyBoot(d) {
 export async function init() {
   state.booting = true
   try {
-    const d = await api.bootstrap()
-    applyBoot(d)
+    await reloadBoot()
+    if (!state.authed) return
     await loadEmails()
-  } catch (e) {
-    state.authed = false
   } finally {
     state.booting = false
   }
@@ -100,26 +98,34 @@ export async function logout() {
   state.digest = null
 }
 
+let bootSeq = 0
 export async function reloadBoot() {
+  const seq = ++bootSeq
   try {
     const d = await api.bootstrap()
-    applyBoot(d)
+    // 丢弃过期响应，避免旧统计覆盖刚保存的白名单等配置
+    if (seq === bootSeq) applyBoot(d)
   } catch (e) {
     if (e.status === 401) state.authed = false
   }
 }
 
+let listSeq = 0
 export async function loadEmails() {
+  const seq = ++listSeq
   state.listLoading = true
   try {
-    state.emails = await api.emails({ mailbox: state.mailboxId, q: state.q, filter: state.filter, limit: 200 })
-    // 同步刷新统计，避免筛选结果与顶部计数（尤其白名单生效后）不一致
-    reloadBoot()
+    const rows = await api.emails({ mailbox: state.mailboxId, q: state.q, filter: state.filter, limit: 200 })
+    if (seq !== listSeq) return
+    state.emails = rows
+    // 同步刷新统计，确保计数与当前列表使用同一份配置
+    await reloadBoot()
   } catch (e) {
+    if (seq !== listSeq) return
     if (e.status === 401) { state.authed = false; return }
     toast(e.message, 'err')
   } finally {
-    state.listLoading = false
+    if (seq === listSeq) state.listLoading = false
   }
 }
 
@@ -147,6 +153,7 @@ export async function openMailbox(id, filter = 'all') {
   state.view = 'mailbox'
   state.mailboxId = id
   state.filter = filter
+  state.q = ''
   state.mobilePane = 'list'
   state.selected = null
   state.selectedId = null
