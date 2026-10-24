@@ -1,0 +1,166 @@
+name: Build and publish release binaries
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  web:
+    name: Build web assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build frontend
+        working-directory: source/web
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Upload web assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: source/web/dist
+          retention-days: 1
+
+  build:
+    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
+    needs: web
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: source/go.mod
+          cache-dependency-path: source/go.sum
+
+      - name: Download web assets
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: source/web/dist
+
+      - name: Build binary
+        working-directory: source
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p ../dist
+          suffix=""
+          if [ "$GOOS" = "windows" ]; then
+            suffix=".exe"
+          fi
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" \
+            -o "../dist/maildesk-${GOOS}-${GOARCH}${suffix}" .
+
+      - name: Package binary
+        run: |
+          set -euo pipefail
+          name="maildesk-${{ matrix.goos }}-${{ matrix.goarch }}"
+          mkdir -p "package/${name}"
+          cp README.md "package/${name}/README.md"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            cp "dist/${name}.exe" "package/${name}/maildesk.exe"
+            (cd package && zip -r "${name}.zip" "${name}")
+            mv "package/${name}.zip" dist/
+            rm "dist/${name}.exe"
+          else
+            cp "dist/${name}" "package/${name}/maildesk"
+            chmod +x "package/${name}/maildesk"
+            tar -C package -czf "$PWD/dist/${name}.tar.gz" "${name}"
+            rm "dist/${name}"
+          fi
+
+      - name: Upload packaged binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          retention-days: 1
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download packaged binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: artifacts
+        run: sha256sum * > SHA256SUMS.txt
+
+      - name: Resolve release tag
+        id: vars
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            version=$(sed -n 's/^const appVersion = "\(.*\)"/\1/p' source/main.go)
+            if [ -z "$version" ]; then
+              echo "Unable to read appVersion from source/main.go" >&2
+              exit 1
+            fi
+            tag="v${version}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "name=MailDesk ${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: ${{ steps.vars.outputs.name }}
+          body: |
+            MailDesk ${{ steps.vars.outputs.tag }}，由 GitHub Actions 自动构建。
+
+            - 提交：${{ github.sha }}
+            - 下载对应平台压缩包，解压后运行 `maildesk`（Windows 为 `maildesk.exe`）
+            - 文件校验：`SHA256SUMS.txt`
+          files: artifacts/*
+          make_latest: true
+          overwrite_files: true

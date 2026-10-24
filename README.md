@@ -30,32 +30,34 @@
 
 ## 快速开始
 
-压缩包内 `bin/` 已包含 5 个平台的可执行文件，按你的系统选一个：
+到 [GitHub Releases](https://github.com/zhf883680/MailDesk/releases) 下载对应平台的压缩包，解压后直接运行：
 
-| 系统 | 文件 |
-| --- | --- |
-| Windows 64 位 | `bin/maildesk-windows-amd64.exe` |
-| macOS Apple 芯片 | `bin/maildesk-darwin-arm64` |
-| macOS Intel | `bin/maildesk-darwin-amd64` |
-| Linux x86_64 | `bin/maildesk-linux-amd64` |
-| Linux ARM64 | `bin/maildesk-linux-arm64` |
+| 系统 | 发布包 | 运行文件 |
+| --- | --- | --- |
+| Windows 64 位 | `maildesk-windows-amd64.zip` | `maildesk.exe` |
+| macOS Apple 芯片 | `maildesk-darwin-arm64.tar.gz` | `maildesk` |
+| macOS Intel | `maildesk-darwin-amd64.tar.gz` | `maildesk` |
+| Linux x86_64 | `maildesk-linux-amd64.tar.gz` | `maildesk` |
+| Linux ARM64 | `maildesk-linux-arm64.tar.gz` | `maildesk` |
+
+发布包附有 `SHA256SUMS.txt` 可用于校验。源码仓库的 `bin/` 目录也保留了一份预编译文件，可用根目录的 `start.sh` / `start.bat` 一键启动；自行交叉编译见下文「从源码构建」。
 
 ### Windows
 
-双击 `start.bat`（或在命令行运行）。浏览器打开 <http://localhost:8080>。
+双击 `maildesk.exe`，或在该目录打开命令行运行：
+
+```bat
+maildesk.exe -addr :8080 -data .\data
+```
 
 ### macOS / Linux
 
 ```bash
-chmod +x start.sh
-./start.sh
+chmod +x maildesk
+./maildesk -addr :8080 -data ./data
 ```
 
-也可以手动指定端口与数据目录：
-
-```bash
-./bin/maildesk-darwin-arm64 -addr :8080 -data ./data
-```
+启动后浏览器打开 <http://localhost:8080>。
 
 首次启动会自动生成 `data/` 目录，控制台会打印访问地址与默认密钥。
 
@@ -265,7 +267,7 @@ data/
 
 ```bash
 # 1. 构建前端
-cd web
+cd source/web
 npm install
 npm run build          # 产物在 web/dist，会被后端 embed
 
@@ -283,6 +285,18 @@ go build -trimpath -ldflags "-s -w" -o maildesk .
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o maildesk.exe .
 CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o maildesk-mac .
 ```
+
+### 自动构建与发布
+
+推送代码后由 GitHub Actions 自动完成前端构建、跨平台编译与发布：
+
+| 触发方式 | 行为 |
+| --- | --- |
+| 推送到 `main` / `master` | 构建 5 个平台的压缩包，发布或更新 `v<当前版本>` Release（版本号取自 `source/main.go` 的 `appVersion`），已存在的同名文件会被覆盖 |
+| 推送 `v*` 标签 | 构建并发布同名 Release，例如 `git tag v1.3.0 && git push origin v1.3.0` |
+| 手动运行 workflow | 按所选分支执行同样的构建与发布 |
+
+工作流文件为 `.github/workflows/release.yml`。发布物包括各平台 `.tar.gz` / `.zip`（内含可执行文件与 README）以及 `SHA256SUMS.txt`；Docker 镜像仍由 `.github/workflows/docker.yml` 单独构建并推送到 GHCR。
 
 源码结构：
 
