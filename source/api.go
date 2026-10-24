@@ -576,6 +576,10 @@ func (s *Server) handleEmails(w http.ResponseWriter, r *http.Request, parts []st
 		s.listEmails(w, r)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "ignore-ads" {
+		s.ignoreAds(w, r)
+		return
+	}
 	id := parts[1]
 	if len(parts) == 3 {
 		switch parts[2] {
@@ -681,7 +685,7 @@ func (s *Server) listEmails(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		sum := e.ToSummary()
-		sum.IsAd = cfgNow.CountsAsAd(e)
+		sum.IsAd = cfgNow.IsAdLabel(e)
 		out = append(out, sum)
 		if len(out) >= limit {
 			break
@@ -695,6 +699,7 @@ func (s *Server) setEmailFlags(w http.ResponseWriter, r *http.Request, id string
 		Seen       *bool   `json:"seen"`
 		Flagged    *bool   `json:"flagged"`
 		Handled    *bool   `json:"handled"`
+		AdIgnored  *bool   `json:"ad_ignored"`
 		AdOverride *string `json:"ad_override"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -712,6 +717,9 @@ func (s *Server) setEmailFlags(w http.ResponseWriter, r *http.Request, id string
 		}
 		if in.Handled != nil {
 			em.Handled = *in.Handled
+		}
+		if in.AdIgnored != nil {
+			em.AdIgnored = *in.AdIgnored
 		}
 		if in.AdOverride != nil {
 			switch *in.AdOverride {
@@ -750,8 +758,37 @@ func (s *Server) emailView(id string) *Email {
 		}
 	}
 	e.NeedAction = e.EffectiveNeedAction()
-	e.IsAd = s.cm.Get().CountsAsAd(e)
+	e.IsAd = s.cm.Get().IsAdLabel(e)
 	return e
+}
+
+// ignoreAds 批量忽略广告：只影响广告统计与广告筛选，邮件仍保留在全部邮件中。
+func (s *Server) ignoreAds(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		fail(w, 405, "方法不允许")
+		return
+	}
+	var in struct {
+		IDs    []string `json:"ids"`
+		Ignore *bool    `json:"ignore"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || len(in.IDs) == 0 {
+		fail(w, 400, "请求格式错误")
+		return
+	}
+	ignore := true
+	if in.Ignore != nil {
+		ignore = *in.Ignore
+	}
+	updated := 0
+	for _, id := range in.IDs {
+		if s.st.Get(id) == nil {
+			continue
+		}
+		s.st.Update(id, func(e *Email) { e.AdIgnored = ignore })
+		updated++
+	}
+	ok(w, map[string]int{"updated": updated})
 }
 
 // ---------- 设置 ----------

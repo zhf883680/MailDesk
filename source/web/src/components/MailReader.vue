@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import Icon from './Icon.vue'
 import {
   state, toggleStar, setSeen, removeSelected, reanalyze, replyToSelected, toast, setHandled, setAdOverride,
+  setAdIgnored,
 } from '../store'
 import { api } from '../api'
 import { fmtFull, fmtTime, initials, colorFor, importanceLabel, renderMarkdownish } from '../utils'
@@ -132,6 +133,14 @@ function toList() {
         >
           <Icon name="tag" :size="17" />
         </button>
+        <button
+          v-if="mail.is_ad"
+          class="icon-btn" :class="{ active: mail.ad_ignored }"
+          :title="mail.ad_ignored ? '取消忽略广告' : '忽略这封广告'"
+          @click="setAdIgnored(!mail.ad_ignored)"
+        >
+          <Icon :name="mail.ad_ignored ? 'eye' : 'eyeOff'" :size="17" />
+        </button>
         <button class="icon-btn" :title="mail.seen ? '标为未读' : '标为已读'" @click="setSeen(!mail.seen)">
           <Icon :name="mail.seen ? 'mail' : 'check'" :size="17" />
         </button>
@@ -215,6 +224,7 @@ function toList() {
               {{ mail.handled ? '已处理' : mail.need_action ? '需要处理' : '无需处理' }}
             </span>
             <span v-if="mail.is_ad" class="badge badge-promo">广告 / 推广</span>
+            <span v-if="mail.ad_ignored" class="badge badge-muted">已忽略</span>
             <span v-if="mail.category" class="badge badge-low">{{ mail.category }}</span>
             <span v-if="hasTrans" class="badge badge-ai"><Icon name="languages" :size="10" /> 已译成中文</span>
           </div>

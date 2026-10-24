@@ -65,6 +65,7 @@ type Email struct {
 
 	Handled    bool         `json:"handled"`
 	AdOverride string       `json:"ad_override,omitempty"` // not_ad | ad | ""
+	AdIgnored  bool         `json:"ad_ignored,omitempty"`
 	Forwarded  bool         `json:"forwarded"`
 	ForwardLog []ForwardLog `json:"forward_log"`
 }
@@ -90,6 +91,7 @@ type EmailSummary struct {
 	RuleCount  int       `json:"rule_count"`
 	Forwarded  bool      `json:"forwarded"`
 	Handled    bool      `json:"handled"`
+	AdIgnored  bool      `json:"ad_ignored"`
 }
 
 // EffectiveNeedAction 手动标记已处理后，不再计入待处理。
@@ -113,7 +115,7 @@ func (e *Email) ToSummary() EmailSummary {
 		Flagged: e.Flagged, AIStatus: e.AIStatus, Summary: e.Summary,
 		Importance: e.Importance, NeedAction: e.EffectiveNeedAction(), IsAd: e.EffectiveIsAd(),
 		Category: e.Category, HasTrans: e.Translated != "" || e.TranslatedHTML != "" || e.TranslatedMD != "", RuleCount: len(e.RuleResults),
-		Forwarded: e.Forwarded, Handled: e.Handled,
+		Forwarded: e.Forwarded, Handled: e.Handled, AdIgnored: e.AdIgnored,
 	}
 }
 
@@ -340,6 +342,7 @@ func (s *Store) MergeFetched(mb string, fetched []*Email) (added, needAI []*Emai
 			e.TranslatedMD = old.TranslatedMD
 			e.Handled = old.Handled
 			e.AdOverride = old.AdOverride
+			e.AdIgnored = old.AdIgnored
 			e.Summary = old.Summary
 			e.Importance = old.Importance
 			e.NeedAction = old.NeedAction

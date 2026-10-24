@@ -1,7 +1,7 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import Icon from './Icon.vue'
-import { state, setFilter, setSearch, selectEmail, syncAll, openMailbox } from '../store'
+import { state, setFilter, setSearch, selectEmail, syncAll, openMailbox, ignoreAds, toast } from '../store'
 import { fmtTime, dayGroup, importanceLabel } from '../utils'
 
 const title = computed(() => {
@@ -55,6 +55,30 @@ function mailboxColor(id) {
 function importanceClass(v) {
   return v === 'high' ? 'badge-high' : v === 'medium' ? 'badge-medium' : 'badge-low'
 }
+
+const confirmIgnore = ref(false)
+let confirmTimer = null
+
+function askIgnoreAll() {
+  if (!confirmIgnore.value) {
+    confirmIgnore.value = true
+    clearTimeout(confirmTimer)
+    confirmTimer = setTimeout(() => { confirmIgnore.value = false }, 3000)
+    return
+  }
+  clearTimeout(confirmTimer)
+  confirmIgnore.value = false
+  runIgnoreAll()
+}
+
+async function runIgnoreAll() {
+  const ids = state.emails.map((e) => e.id)
+  try {
+    await ignoreAds(ids)
+  } catch (e) {
+    toast(e.message, 'err')
+  }
+}
 </script>
 
 <template>
@@ -90,6 +114,13 @@ function importanceClass(v) {
           @click="setFilter(f.key)"
         >
           {{ f.label }}<span v-if="f.n" class="n">{{ f.n }}</span>
+        </button>
+      </div>
+      <div v-if="state.filter === 'ads' && state.emails.length" class="ads-bar">
+        <span>AI 判定为广告，忽略后仍可在全部邮件中找回</span>
+        <button class="btn btn-sm" @click="askIgnoreAll">
+          <Icon name="eyeOff" :size="12" />
+          {{ confirmIgnore ? `确认忽略 ${state.emails.length} 封` : '全部忽略' }}
         </button>
       </div>
     </div>
@@ -139,6 +170,7 @@ function importanceClass(v) {
             <span v-else-if="mail.importance === 'medium'" class="badge badge-medium">{{ importanceLabel(mail.importance) }}</span>
             <span v-if="mail.need_action" class="badge badge-action">待处理</span>
             <span v-if="mail.is_ad" class="badge badge-promo">广告</span>
+            <span v-if="mail.ad_ignored" class="badge badge-muted">已忽略</span>
             <span v-if="mail.handled" class="badge badge-low"><Icon name="check" :size="10" /> 已处理</span>
             <span v-if="mail.has_trans" class="badge badge-ai mi-extra"><Icon name="languages" :size="10" /> 译</span>
             <span v-if="mail.ai_status === 'pending' || mail.ai_status === 'running'" class="badge badge-ai">

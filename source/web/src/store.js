@@ -249,6 +249,27 @@ export async function setAdOverride(value) {
   toast(value === 'not_ad' ? '已标记为「不是广告」' : '已标记为广告')
 }
 
+// 忽略 / 取消忽略广告：忽略后不再计入广告统计与广告列表
+export async function setAdIgnored(ignore) {
+  if (!state.selected) return
+  const id = state.selected.id
+  const e = await api.flags(id, { ad_ignored: ignore })
+  if (state.selected?.id === id) state.selected = e
+  const item = state.emails.find((x) => x.id === id)
+  if (item) item.ad_ignored = e.ad_ignored
+  await reloadStats()
+  toast(ignore ? '已忽略这封广告' : '已取消忽略')
+}
+
+export async function ignoreAds(ids) {
+  if (!ids.length) return
+  const r = await api.ignoreAds(ids)
+  const set = new Set(ids)
+  state.emails = state.emails.filter((e) => !set.has(e.id))
+  await reloadStats()
+  toast(`已忽略 ${r.updated} 封广告`)
+}
+
 export async function toggleStar() {
   if (!state.selected) return
   const next = !state.selected.flagged

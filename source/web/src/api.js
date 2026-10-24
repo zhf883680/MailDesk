@@ -41,6 +41,7 @@ export const api = {
   },
   email: (id) => request('emails/' + encodeURIComponent(id)),
   flags: (id, data) => request(`emails/${encodeURIComponent(id)}/flags`, { method: 'POST', body: data }),
+  ignoreAds: (ids) => request('emails/ignore-ads', { method: 'POST', body: { ids } }),
   removeEmail: (id) => request('emails/' + encodeURIComponent(id), { method: 'DELETE' }),
   analyze: (id) => request(`emails/${encodeURIComponent(id)}/analyze`, { method: 'POST' }),
   translate: (id) => request(`emails/${encodeURIComponent(id)}/translate`, { method: 'POST' }),
