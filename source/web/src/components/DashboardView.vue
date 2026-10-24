@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import Icon from './Icon.vue'
 import { state, openMailbox, openEmail, loadEmails, loadDigest, syncAll, openCompose } from '../store'
 import { fmtTime, importanceLabel, renderMarkdownish } from '../utils'
@@ -19,6 +19,7 @@ const today = new Date()
 const dateLine = `${today.getMonth() + 1} 月 ${today.getDate()} 日 · 周${['日', '一', '二', '三', '四', '五', '六'][today.getDay()]}`
 
 const stats = computed(() => state.stats)
+const digestOpen = ref(false)
 const hasSync = computed(() => {
   const t = state.stats.last_sync
   return t && new Date(t).getFullYear() > 2000
@@ -67,9 +68,6 @@ function mbColor(id) { return state.mailboxes.find((m) => m.id === id)?.color ||
   <div class="page">
     <header class="page-head">
       <div>
-        <button class="icon-btn mobile-only" style="margin-bottom: 6px" @click="state.sidebarOpen = true" aria-label="菜单">
-          <Icon name="menu" :size="19" />
-        </button>
         <div class="eyebrow">{{ dateLine }}</div>
         <h1>{{ greeting }}，{{ headline }}</h1>
         <p v-if="hasSync">最近同步 {{ fmtTime(stats.last_sync) }} · {{ state.mailboxes.length }} 个邮箱已接入</p>
@@ -111,12 +109,16 @@ function mbColor(id) { return state.mailboxes.find((m) => m.id === id)?.color ||
       <div v-else-if="state.digestError" class="digest-empty">
         {{ state.digestError }}
       </div>
-      <div v-else-if="state.digest" class="digest-body" v-html="renderMarkdownish(state.digest).replace(/\n/g, '<br>')"></div>
+      <div v-else-if="state.digest" class="digest-body" :class="{ clamp: !digestOpen }" v-html="renderMarkdownish(state.digest).replace(/\n/g, '<br>')"></div>
       <div v-else class="digest-empty">
         {{ state.ai.enabled ? '点击下方按钮，让 AI 汇总今天最值得关注的事。' : '配置 AI 引擎后，这里会自动汇总每日重点邮件。' }}
       </div>
 
       <div class="digest-actions">
+        <button v-if="state.digest" class="digest-toggle" @click="digestOpen = !digestOpen">
+          {{ digestOpen ? '收起' : '展开全文' }}
+          <Icon :name="digestOpen ? 'chevronDown' : 'chevronRight'" :size="12" />
+        </button>
         <button v-if="state.ai.enabled" class="btn btn-sm" :disabled="state.digestLoading" @click="loadDigest(true)">
           <Icon name="sparkles" :size="13" /> {{ state.digest ? '重新生成' : '生成简报' }}
         </button>
@@ -157,7 +159,7 @@ function mbColor(id) { return state.mailboxes.find((m) => m.id === id)?.color ||
         </div>
       </div>
 
-      <div class="panel">
+      <div class="panel recent-panel">
         <div class="panel-head">
           <Icon name="mail" :size="15" />
           <h3>最近邮件</h3>

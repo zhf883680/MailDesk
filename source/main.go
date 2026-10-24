@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const appVersion = "1.1.0"
+const appVersion = "1.2.0"
 
 //go:embed all:web/dist
 var webFS embed.FS
@@ -33,6 +33,12 @@ func staticHandler() http.Handler {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
 			w.Header().Set("Cache-Control", "no-cache")
+		}
+		if strings.HasSuffix(p, ".webmanifest") {
+			w.Header().Set("Content-Type", "application/manifest+json")
+			w.Header().Set("Cache-Control", "no-cache")
+			fileServer.ServeHTTP(w, r)
+			return
 		}
 		if p == "" || p == "index.html" {
 			serveIndex(w, r, sub)

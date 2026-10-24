@@ -145,6 +145,7 @@ async function syncOne(mb) {
 
 /* ---------------- AI ---------------- */
 const aiForm = reactive({ ...state.ai, api_key: '' })
+const adWhiteText = ref((state.ai.ad_whitelist || []).join('\n'))
 const aiSaving = ref(false)
 const aiTesting = ref(false)
 const aiMsg = ref({ text: '', err: false })
@@ -153,7 +154,10 @@ async function saveAI() {
   aiSaving.value = true
   aiMsg.value = { text: '', err: false }
   try {
-    await api.saveAI({ ...aiForm })
+    await api.saveAI({
+      ...aiForm,
+      ad_whitelist: adWhiteText.value.split(/[\n,，;；]+/).map((s) => s.trim()).filter(Boolean),
+    })
     await reloadBoot()
     aiMsg.value = { text: '配置已保存', err: false }
     toast('AI 配置已保存')
@@ -524,6 +528,12 @@ const vTrans = '{{translation}}'
                 <option value="auto">默认翻译 —— 收到邮件后自动翻译</option>
                 <option value="manual">点击时翻译 —— 阅读时点「译文」才翻译</option>
               </select>
+            </div>
+
+            <div class="field" style="margin-top: 16px; max-width: 520px">
+              <label>广告白名单（发件人或域名，每行一个）</label>
+              <textarea v-model="adWhiteText" class="input" rows="3" placeholder="github.com&#10;notifications@stripe.com&#10;账单"></textarea>
+              <div class="hint" style="margin-top: 4px">命中的发件人不会被判为广告，适合 GitHub、Stripe、账单通知这类容易被误判的邮件。也可以在阅读页点标签图标单封纠正。</div>
             </div>
 
             <div class="form-actions">

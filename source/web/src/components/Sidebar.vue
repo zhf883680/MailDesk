@@ -92,6 +92,11 @@ function compose() {
       </button>
     </div>
 
+    <button class="nav-item mobile-only side-settings" @click="emit('open-settings', 'ai'); state.sidebarOpen = false">
+      <Icon name="settings" :size="17" />
+      <span>设置</span>
+    </button>
+
     <div class="side-foot">
       <button class="icon-btn" title="设置" @click="emit('open-settings', state.mailboxes.length ? 'ai' : 'mailboxes')"><Icon name="settings" :size="17" /></button>
       <button class="icon-btn" title="同步邮件" @click="syncAll"><Icon name="refresh" :size="16" :class="{ spin: state.syncing }" /></button>

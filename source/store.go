@@ -61,6 +61,8 @@ type Email struct {
 	AIAt           time.Time    `json:"ai_at"`
 	AIError        string       `json:"ai_error"`
 
+	Handled    bool         `json:"handled"`
+	AdOverride string       `json:"ad_override,omitempty"` // not_ad | ad | ""
 	Forwarded  bool         `json:"forwarded"`
 	ForwardLog []ForwardLog `json:"forward_log"`
 }
@@ -85,6 +87,21 @@ type EmailSummary struct {
 	HasTrans   bool      `json:"has_trans"`
 	RuleCount  int       `json:"rule_count"`
 	Forwarded  bool      `json:"forwarded"`
+	Handled    bool      `json:"handled"`
+}
+
+// EffectiveNeedAction 手动标记已处理后，不再计入待处理。
+func (e *Email) EffectiveNeedAction() bool { return e.NeedAction && !e.Handled }
+
+// EffectiveIsAd 尊重用户的手动判定（例如把误判的邮件标为“不是广告”）。
+func (e *Email) EffectiveIsAd() bool {
+	switch e.AdOverride {
+	case "not_ad":
+		return false
+	case "ad":
+		return true
+	}
+	return e.IsAd
 }
 
 func (e *Email) ToSummary() EmailSummary {
@@ -92,9 +109,9 @@ func (e *Email) ToSummary() EmailSummary {
 		ID: e.ID, MailboxID: e.MailboxID, Subject: e.Subject, SubjectZh: e.SubjectZh, FromName: e.FromName,
 		FromAddr: e.FromAddr, Date: e.Date, Snippet: e.Snippet, Seen: e.Seen,
 		Flagged: e.Flagged, AIStatus: e.AIStatus, Summary: e.Summary,
-		Importance: e.Importance, NeedAction: e.NeedAction, IsAd: e.IsAd,
+		Importance: e.Importance, NeedAction: e.EffectiveNeedAction(), IsAd: e.EffectiveIsAd(),
 		Category: e.Category, HasTrans: e.Translated != "" || e.TranslatedHTML != "", RuleCount: len(e.RuleResults),
-		Forwarded: e.Forwarded,
+		Forwarded: e.Forwarded, Handled: e.Handled,
 	}
 }
 
@@ -318,6 +335,8 @@ func (s *Store) MergeFetched(mb string, fetched []*Email) (added, needAI []*Emai
 			e.SubjectZh = old.SubjectZh
 			e.Translated = old.Translated
 			e.TranslatedHTML = old.TranslatedHTML
+			e.Handled = old.Handled
+			e.AdOverride = old.AdOverride
 			e.Summary = old.Summary
 			e.Importance = old.Importance
 			e.NeedAction = old.NeedAction

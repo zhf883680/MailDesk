@@ -256,11 +256,16 @@ func (a *AIService) process(id string) {
 					firstErr = fmt.Errorf("分类结果解析失败: %w", err)
 				}
 			} else {
+				isAd := res.IsAd
+				// 命中广告白名单的发件人一律不判为广告
+				if isAd && a.cm.Get().IsAdWhitelisted(email) {
+					isAd = false
+				}
 				a.st.Update(id, func(e *Email) {
 					e.Summary = strings.TrimSpace(res.Summary)
 					e.Importance = normalizeImportance(res.Importance)
 					e.NeedAction = res.NeedAction
-					e.IsAd = res.IsAd
+					e.IsAd = isAd
 					e.Category = strings.TrimSpace(res.Category)
 				})
 			}

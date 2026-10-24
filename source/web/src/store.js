@@ -121,6 +121,19 @@ export async function loadEmails() {
   }
 }
 
+// 重新拉取当前页面所需的数据（下拉刷新 / 回到前台时使用）
+export async function refreshData() {
+  await reloadBoot()
+  if (!state.authed) return
+  if (state.view === 'mailbox') {
+    await loadEmails()
+    if (state.selected) await refreshSelected()
+  } else if (state.view === 'dashboard') {
+    await loadEmails()
+    if (state.ai.enabled) await loadDigest(false)
+  }
+}
+
 let searchTimer = null
 export function setSearch(q) {
   state.q = q
@@ -187,6 +200,33 @@ export async function refreshSelected() {
       has_trans: !!e.translated, rule_count: (e.rule_results || []).length,
     })
   } catch (e) { /* ignore */ }
+}
+
+// 标记 / 取消「已处理」
+export async function setHandled(handled) {
+  if (!state.selected) return
+  const id = state.selected.id
+  const e = await api.flags(id, { handled })
+  if (state.selected?.id === id) state.selected = e
+  const item = state.emails.find((x) => x.id === id)
+  if (item) {
+    item.handled = e.handled
+    item.need_action = e.need_action
+  }
+  await reloadBoot()
+  toast(handled ? '已标记为处理完成' : '已恢复为待处理')
+}
+
+// 纠正 AI 的广告误判
+export async function setAdOverride(value) {
+  if (!state.selected) return
+  const id = state.selected.id
+  const e = await api.flags(id, { ad_override: value })
+  if (state.selected?.id === id) state.selected = e
+  const item = state.emails.find((x) => x.id === id)
+  if (item) item.is_ad = e.is_ad
+  await reloadBoot()
+  toast(value === 'not_ad' ? '已标记为「不是广告」' : '已标记为广告')
 }
 
 export async function toggleStar() {

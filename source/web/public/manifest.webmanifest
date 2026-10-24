@@ -1,0 +1,16 @@
+{
+  "name": "MailDesk · AI 邮件台",
+  "short_name": "MailDesk",
+  "description": "多邮箱统一收件、AI 翻译与分级、Bark 推送的私人邮件管理台",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f1e9",
+  "theme_color": "#14211d",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -334,7 +334,12 @@ a { color: var(--accent); text-decoration: none; }
   line-height: 1.6; flex-wrap: wrap;
 }
 .forward-note.err { color: var(--red); background: var(--red-soft); }
-.forward-note .btn { margin-left: 4px; }
+.handled-note {
+  display: flex; align-items: center; gap: 7px; margin: 14px 0 0;
+  padding: 9px 12px; border-radius: 9px; font-size: 12.5px;
+  background: var(--accent-soft); color: var(--accent-ink);
+}
+.handled-note button { margin-left: auto; font-size: 12px; color: var(--accent-ink); text-decoration: underline; text-underline-offset: 2px; }.forward-note .btn { margin-left: 4px; }
 .mail-body-wrap { margin-top: 24px; }
 .body-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
 .body-toolbar .seg { display: flex; background: var(--paper-2); border-radius: 8px; padding: 2px; }
@@ -403,7 +408,8 @@ a { color: var(--accent); text-decoration: none; }
 .digest-body .md-li { padding-left: 16px; text-indent: -16px; margin: 3px 0; }
 .digest-body .md-p { margin: 10px 0; }
 .digest-empty { color: rgba(236, 244, 238, 0.55); font-size: 13px; line-height: 1.8; }
-.digest-actions { margin-top: 16px; display: flex; gap: 8px; position: relative; z-index: 1; }
+.digest-actions { margin-top: 16px; display: flex; gap: 8px; align-items: center; position: relative; z-index: 1; }
+.digest-toggle { display: none; }
 .digest-actions .btn { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.16); color: #e8f0ea; }
 .digest-actions .btn:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
 
@@ -509,6 +515,7 @@ a { color: var(--accent); text-decoration: none; }
 
 /* 移动端 */
 .mobile-only { display: none; }
+.m-topbar { display: none; }
 @media (max-width: 1180px) {
   .list-pane { width: 344px; flex-basis: 344px; }
   .reader-inner { padding: 26px 28px 70px; }
@@ -516,37 +523,125 @@ a { color: var(--accent); text-decoration: none; }
 }
 @media (max-width: 980px) {
   .stat-grid { grid-template-columns: 1fr 1fr; }
-  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; transform: translateX(-100%); transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1); box-shadow: var(--shadow-lg); }
+  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; transform: translateX(-100%); transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1); box-shadow: var(--shadow-lg); width: min(310px, 86vw); padding: 22px 16px 16px; }
   .sidebar.open { transform: translateX(0); }
-  .sidebar-scrim { position: fixed; inset: 0; background: rgba(20, 18, 14, 0.35); z-index: 25; }
+  .sidebar-scrim { position: fixed; inset: 0; background: rgba(20, 18, 14, 0.42); z-index: 25; backdrop-filter: blur(1px); }
   .mobile-only { display: inline-flex; }
   .list-pane { flex: 1 1 auto; width: auto; border-right: none; }
   .main-area { position: relative; }
   .reader-pane { display: none; }
   .reader-pane.mobile { display: block; position: absolute; inset: 0; z-index: 20; background: var(--surface); }
   .settings-shell { flex-direction: column; gap: 14px; }
-  .settings-nav { width: 100%; flex: none; flex-direction: row; overflow-x: auto; position: static; }
+  .settings-nav { width: 100%; flex: none; flex-direction: row; overflow-x: auto; position: sticky; top: 0; z-index: 14; background: var(--paper); padding: 8px 0 10px; scrollbar-width: none; }
+  .settings-nav::-webkit-scrollbar { display: none; }
   .settings-nav button { white-space: nowrap; }
   .page-head { flex-direction: column; gap: 12px; }
+
+  /* 触控友好的点击区域与图标 */
+  .icon-btn { width: 40px; height: 40px; border-radius: 12px; }
+  .icon-btn svg { width: 20px; height: 20px; }
+  .side-foot .icon-btn { width: 42px; height: 42px; }
+  .nav-item { height: 46px; font-size: 14.5px; }
+  .nav-item svg { width: 19px; height: 19px; }
+  .side-section button svg { width: 18px; height: 18px; }
+  .mb-item { height: 44px; font-size: 14px; }
+  .compose-btn { height: 46px; font-size: 14.5px; }
+
+  /* 移动端顶栏 */
+  .m-topbar {
+    display: flex; align-items: center; gap: 4px;
+    position: sticky; top: 0; z-index: 18;
+    padding: 8px 12px; height: 58px;
+    background: rgba(248, 244, 236, 0.94);
+    backdrop-filter: blur(14px) saturate(1.2);
+    border-bottom: 1px solid var(--line);
+  }
+  .m-topbar .m-brand { display: flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 16.5px; letter-spacing: 0.4px; color: var(--ink); }
+  .m-topbar .grow { flex: 1; }
+
+  /* 列表头部吸顶 */
+  .list-head { position: sticky; top: 0; z-index: 16; background: rgba(250, 247, 240, 0.95); backdrop-filter: blur(12px); }
+  .mail-scroll { padding-bottom: 92px; }
+  .page { padding-bottom: 96px; }
+
+  /* 阅读页顶部操作条吸顶 */
+  .reader-top {
+    position: sticky; top: 0; z-index: 16;
+    margin: -8px -18px 14px; padding: 6px 10px;
+    background: rgba(255, 253, 248, 0.95); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
 }
 @media (max-width: 700px) {
   .login-art { display: none; }
   .login-form-side { flex: 1 1 auto; padding: 24px; }
   .login-card { max-width: 100%; }
-  .list-head { padding: 16px 16px 10px; }
-  .mail-item { padding: 12px 16px 12px 17px; }
-  .mail-group-label { padding-left: 16px; }
-  .reader-inner { padding: 18px 18px 60px; }
-  .page { padding: 20px 16px 96px; }
-  .stat-grid { gap: 9px; }
-  .stat-card { padding: 13px; }
-  .stat-card .v { font-size: 26px; }
-  .panel { padding: 16px; }
-  .settings-section { padding: 17px; }
-  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+
+  /* 首页更清爽：小标题、精简卡片 */
+  .page { padding: 18px 15px 100px; }
+  .page-head { margin-bottom: 18px; gap: 14px; }
+  .page-head .eyebrow { font-size: 10px; letter-spacing: 1.6px; margin-bottom: 7px; }
+  .page-head h1 { font-size: 23px; line-height: 1.38; letter-spacing: 0.2px; }
+  .page-head p { font-size: 12px; margin-top: 7px; line-height: 1.6; }
+  .page-head > div:last-child { width: 100%; gap: 10px !important; }
+  .page-head .btn { flex: 1; height: 40px; justify-content: center; font-size: 13px; }
+  .stat-grid { gap: 9px; margin-bottom: 16px; }
+  .stat-card { padding: 12px 12px 12px 14px; border-radius: 13px; box-shadow: none; }
+  .stat-card .k { font-size: 11px; gap: 5px; }
+  .stat-card .k svg { width: 12px; height: 12px; }
+  .stat-card .v { font-size: 24px; margin-top: 4px; letter-spacing: 0.5px; }
+  .stat-card .stat-hint { display: none; }
+  .panel { padding: 15px; border-radius: 14px; }
+  .panel-head h3 { font-size: 14px; }
+  .digest-body { font-size: 13.5px; line-height: 1.85; }
+  .digest-body.clamp { max-height: 11.5em; overflow: hidden; position: relative; }
+  .digest-body.clamp::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3em;
+    background: linear-gradient(180deg, rgba(23, 36, 31, 0), rgba(23, 36, 31, 0.96));
+  }
+  .digest-toggle { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: rgba(236, 244, 238, 0.66); padding: 0; }
+  .digest-actions { margin-top: 10px; }
+  .digest-panel { margin-bottom: 14px; }
+  .recent-panel { display: none; }
+  .todo-item { padding: 10px 0; }
+  .mb-grid { grid-template-columns: 1fr; }
+
+  /* 列表行：字号提升、次要徽标收起 */
+  .list-head { padding: 12px 14px 10px; }
+  .list-title { margin-bottom: 11px; justify-content: flex-start; }
+  .list-title .icon-btn:last-child { margin-left: auto; }
+  .list-title h2 { font-size: 19px; gap: 7px; }
+  .list-title .count-txt { font-size: 10.5px; }
+  .search-box input { height: 40px; font-size: 13.5px; border-radius: 11px; }
+  .filter-chips { gap: 7px; margin-top: 10px; }
+  .chip { height: 30px; padding: 0 12px; font-size: 12.5px; border-radius: 8px; }
+  .mail-group-label { padding: 15px 15px 6px; font-size: 10px; }
+  .mail-item { padding: 13px 15px 13px 16px; }
+  .mi-sender { font-size: 12.5px; }
+  .mi-subject { font-size: 14px; line-height: 1.45; margin-bottom: 5px; }
+  .mi-snippet { font-size: 12.5px; line-height: 1.55; }
+  .mi-badges { margin-top: 7px; gap: 4px; }
+  .mi-badges .badge { height: 18px; font-size: 10px; padding: 0 6px; }
+  .mi-extra { display: none !important; }
+  .mi-mb { font-size: 10px; }
+
+  /* 阅读页 */
+  .reader-inner { padding: 14px 16px 90px; }
+  .reader-top { margin: -6px -16px 12px; padding: 6px 8px; }
+  .reader-subject { font-size: 20px; line-height: 1.4; }
+  .reader-subject-zh { font-size: 12.5px; }
+  .sender-row { gap: 12px; flex-wrap: wrap; }
+  .sender-date { text-align: left; width: 100%; margin-top: 2px; font-size: 11px; white-space: normal; }
+  .ai-panel { padding: 14px; border-radius: 13px; }
+  .ai-summary { font-size: 13.5px; }
+  .ai-meta .badge { height: 20px; font-size: 10.5px; }
+  .body-toolbar { margin-bottom: 10px; }
+  .body-toolbar .seg button { height: 32px; padding: 0 14px; font-size: 12.5px; }
+  .mail-body { font-size: 14px; }
+  .html-frame { height: 60dvh; }
+
   .modal-backdrop { padding: 0; align-items: flex-end; }
   .modal { max-width: 100%; border-radius: 18px 18px 0 0; max-height: 94dvh; }
-  .sender-row { flex-wrap: wrap; }
-  .sender-date { text-align: left; width: 100%; margin-top: 4px; }
-  .reader-subject { font-size: 21px; }
+  .settings-section { padding: 16px; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
 }

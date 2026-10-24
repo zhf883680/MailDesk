@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import Icon from './Icon.vue'
 import {
-  state, toggleStar, setSeen, removeSelected, reanalyze, replyToSelected, toast,
+  state, toggleStar, setSeen, removeSelected, reanalyze, replyToSelected, toast, setHandled, setAdOverride,
 } from '../store'
 import { api } from '../api'
 import { fmtFull, fmtTime, initials, colorFor, importanceLabel, renderMarkdownish } from '../utils'
@@ -112,6 +112,21 @@ function toList() {
         <button class="icon-btn" :class="{ active: mail.flagged }" title="标记星标" @click="toggleStar">
           <Icon name="star" :size="17" :filled="mail.flagged" />
         </button>
+        <button
+          v-if="mail.need_action || mail.handled"
+          class="icon-btn" :class="{ active: mail.handled }"
+          :title="mail.handled ? '撤销已处理' : '标记为已处理'"
+          @click="setHandled(!mail.handled)"
+        >
+          <Icon name="check" :size="18" />
+        </button>
+        <button
+          v-if="mail.is_ad"
+          class="icon-btn" title="不是广告（纠正误判）"
+          @click="setAdOverride('not_ad')"
+        >
+          <Icon name="tag" :size="17" />
+        </button>
         <button class="icon-btn" :title="mail.seen ? '标为未读' : '标为已读'" @click="setSeen(!mail.seen)">
           <Icon :name="mail.seen ? 'mail' : 'check'" :size="17" />
         </button>
@@ -146,6 +161,12 @@ function toList() {
           <div class="sender-addr" style="margin-top: 4px" v-if="toList()">发给 {{ toList() }}</div>
         </div>
         <div class="sender-date">{{ fmtFull(mail.date) }}</div>
+      </div>
+
+      <div v-if="mail.handled" class="handled-note">
+        <Icon name="check" :size="13" />
+        已标记为处理完成
+        <button @click="setHandled(false)">撤销</button>
       </div>
 
       <!-- AI 解读 -->
@@ -185,8 +206,8 @@ function toList() {
             <span v-if="mail.importance" class="badge" :class="'badge-' + mail.importance">
               {{ mail.importance === 'high' ? '重要 · 优先' : importanceLabel(mail.importance) }}
             </span>
-            <span class="badge" :class="mail.need_action ? 'badge-action' : 'badge-low'">
-              {{ mail.need_action ? '需要处理' : '无需处理' }}
+            <span class="badge" :class="mail.handled ? 'badge-low' : mail.need_action ? 'badge-action' : 'badge-low'">
+              {{ mail.handled ? '已处理' : mail.need_action ? '需要处理' : '无需处理' }}
             </span>
             <span v-if="mail.is_ad" class="badge badge-ad">广告 / 推广</span>
             <span v-if="mail.category" class="badge badge-low">{{ mail.category }}</span>

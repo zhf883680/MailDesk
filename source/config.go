@@ -22,15 +22,16 @@ import (
 // ---------- 数据模型 ----------
 
 type AIConfig struct {
-	Enabled       bool    `json:"enabled"`
-	BaseURL       string  `json:"base_url"`
-	APIKey        string  `json:"api_key"`
-	Model         string  `json:"model"`
-	Temperature   float64 `json:"temperature"`
-	Translate     bool    `json:"translate"`
-	TranslateMode string  `json:"translate_mode"` // auto=收到即翻译, manual=阅读时点击翻译
-	Classify      bool    `json:"classify"`
-	MaxChars      int     `json:"max_chars"`
+	Enabled       bool     `json:"enabled"`
+	BaseURL       string   `json:"base_url"`
+	APIKey        string   `json:"api_key"`
+	Model         string   `json:"model"`
+	Temperature   float64  `json:"temperature"`
+	Translate     bool     `json:"translate"`
+	TranslateMode string   `json:"translate_mode"` // auto=收到即翻译, manual=阅读时点击翻译
+	Classify      bool     `json:"classify"`
+	MaxChars      int      `json:"max_chars"`
+	AdWhitelist   []string `json:"ad_whitelist"` // 绝不判为广告的发件人 / 域名
 }
 
 type Mailbox struct {
@@ -357,6 +358,28 @@ func (cm *ConfigManager) SaveMailboxRuntime(id string, lastSync time.Time, lastE
 		}
 		return nil
 	})
+}
+
+// IsAdWhitelisted 判断发件人是否在广告白名单中（支持邮箱、域名或名称片段）。
+func (cfg *Config) IsAdWhitelisted(e *Email) bool {
+	if e == nil {
+		return false
+	}
+	from := strings.ToLower(e.FromName + " " + e.FromAddr)
+	domain := ""
+	if i := strings.LastIndex(e.FromAddr, "@"); i >= 0 {
+		domain = strings.ToLower(e.FromAddr[i+1:])
+	}
+	for _, w := range cfg.AI.AdWhitelist {
+		w = strings.ToLower(strings.TrimSpace(w))
+		if w == "" {
+			continue
+		}
+		if strings.Contains(from, w) || (domain != "" && strings.Contains(domain, w)) {
+			return true
+		}
+	}
+	return false
 }
 
 func sortMailboxes(list []Mailbox) {

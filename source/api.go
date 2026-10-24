@@ -277,11 +277,11 @@ func (s *Server) stats() Stats {
 			ms.High++
 			st.High++
 		}
-		if e.NeedAction {
+		if e.EffectiveNeedAction() {
 			ms.NeedAction++
 			st.NeedAction++
 		}
-		if e.IsAd {
+		if e.EffectiveIsAd() && !cfg.IsAdWhitelisted(e) {
 			ms.Ads++
 			st.Ads++
 		}
@@ -580,12 +580,11 @@ func (s *Server) handleEmails(w http.ResponseWriter, r *http.Request, parts []st
 				fail(w, 404, "邮件不存在")
 				return
 			}
-			e, err := s.ai.TranslateEmail(id)
-			if err != nil {
+			if _, err := s.ai.TranslateEmail(id); err != nil {
 				fail(w, 500, err.Error())
 				return
 			}
-			ok(w, e)
+			ok(w, s.emailView(id))
 		case "forward":
 			if s.st.Get(id) == nil {
 				fail(w, 404, "邮件不存在")
@@ -617,7 +616,7 @@ func (s *Server) handleEmails(w http.ResponseWriter, r *http.Request, parts []st
 				}()
 			}
 		}
-		ok(w, s.st.Copy(id))
+		ok(w, s.emailView(id))
 	case http.MethodDelete:
 		e := s.st.Get(id)
 		if e == nil {
@@ -651,6 +650,7 @@ func (s *Server) listEmails(w http.ResponseWriter, r *http.Request) {
 	} else {
 		source = s.st.All()
 	}
+	cfgNow := s.cm.Get()
 	out := make([]EmailSummary, 0, len(source))
 	for _, e := range source {
 		if filter == "unread" && e.Seen {
@@ -659,10 +659,10 @@ func (s *Server) listEmails(w http.ResponseWriter, r *http.Request) {
 		if filter == "important" && e.Importance != "high" {
 			continue
 		}
-		if filter == "action" && !e.NeedAction {
+		if filter == "action" && !e.EffectiveNeedAction() {
 			continue
 		}
-		if filter == "ads" && !e.IsAd {
+		if filter == "ads" && (!e.EffectiveIsAd() || cfgNow.IsAdWhitelisted(e)) {
 			continue
 		}
 		if q != "" {
@@ -671,7 +671,11 @@ func (s *Server) listEmails(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		out = append(out, e.ToSummary())
+		sum := e.ToSummary()
+		if cfgNow.IsAdWhitelisted(e) {
+			sum.IsAd = false
+		}
+		out = append(out, sum)
 		if len(out) >= limit {
 			break
 		}
@@ -681,8 +685,10 @@ func (s *Server) listEmails(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) setEmailFlags(w http.ResponseWriter, r *http.Request, id string) {
 	var in struct {
-		Seen    *bool `json:"seen"`
-		Flagged *bool `json:"flagged"`
+		Seen       *bool   `json:"seen"`
+		Flagged    *bool   `json:"flagged"`
+		Handled    *bool   `json:"handled"`
+		AdOverride *string `json:"ad_override"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		fail(w, 400, "请求格式错误")
@@ -697,6 +703,17 @@ func (s *Server) setEmailFlags(w http.ResponseWriter, r *http.Request, id string
 		if in.Seen != nil {
 			em.Seen = *in.Seen
 		}
+		if in.Handled != nil {
+			em.Handled = *in.Handled
+		}
+		if in.AdOverride != nil {
+			switch *in.AdOverride {
+			case "not_ad", "ad":
+				em.AdOverride = *in.AdOverride
+			case "":
+				em.AdOverride = ""
+			}
+		}
 		if in.Flagged != nil {
 			em.Flagged = *in.Flagged
 		}
@@ -709,7 +726,22 @@ func (s *Server) setEmailFlags(w http.ResponseWriter, r *http.Request, id string
 			}
 		}()
 	}
-	ok(w, s.st.Copy(id))
+	ok(w, s.emailView(id))
+}
+
+// emailView 返回给前端的邮件详情：把「已处理」与广告纠正折算成有效值。
+func (s *Server) emailView(id string) *Email {
+	e := s.st.Copy(id)
+	if e == nil {
+		return nil
+	}
+	e.NeedAction = e.EffectiveNeedAction()
+	if s.cm.Get().IsAdWhitelisted(e) {
+		e.IsAd = false
+	} else {
+		e.IsAd = e.EffectiveIsAd()
+	}
+	return e
 }
 
 // ---------- 设置 ----------
