@@ -611,7 +611,9 @@ const demoDigest = `今天你共有 **6 件** 需要亲自处理的事项，其�
 func (a *AIService) Digest(force bool) (string, error) {
 	a.digestMu.Lock()
 	defer a.digestMu.Unlock()
-	if !force && a.digestText != "" && time.Since(a.digestAt) < 30*time.Minute {
+	now := time.Now()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if !force && a.digestText != "" && !a.digestAt.Before(dayStart) && now.Sub(a.digestAt) < 24*time.Hour {
 		return a.digestText, nil
 	}
 	cfg := a.cm.Get().AI
@@ -623,12 +625,16 @@ func (a *AIService) Digest(force bool) (string, error) {
 		}
 		return "", errors.New("尚未启用 AI，请在设置中配置")
 	}
-	emails := a.st.All()
-	if len(emails) > 40 {
-		emails = emails[:40]
+	all := a.st.All()
+	dayEnd := dayStart.AddDate(0, 0, 1)
+	emails := make([]*Email, 0, len(all))
+	for _, e := range all {
+		if !e.Date.Before(dayStart) && e.Date.Before(dayEnd) {
+			emails = append(emails, e)
+		}
 	}
 	if len(emails) == 0 {
-		return "", errors.New("暂无邮件可供分析")
+		return "", errors.New("今日暂无邮件可供分析")
 	}
 	var b strings.Builder
 	for _, e := range emails {

@@ -99,7 +99,7 @@ function mbColor(id) { return state.mailboxes.find((m) => m.id === id)?.color ||
         <h3>AI 今日简报</h3>
         <span class="hint">
           <template v-if="stats.pending_ai">{{ stats.pending_ai }} 封分析中…</template>
-          <template v-else>基于最近 {{ Math.min(state.emails.length, 40) }} 封邮件</template>
+          <template v-else>基于今日邮件</template>
         </span>
       </div>
 
