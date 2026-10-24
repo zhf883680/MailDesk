@@ -57,21 +57,25 @@ export function escapeHTML(s) {
   return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }
 
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
+
+marked.setOptions({ gfm: true, breaks: true, headerIds: false, mangle: false })
+
+// 渲染 AI 返回的 Markdown（支持标题、列表、表格、代码块），并做 XSS 清洗
 export function renderMarkdownish(s) {
-  const esc = escapeHTML(s)
-  const inline = (t) => t
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/^#{1,3}\s+(.+)$/g, '<strong>$1</strong>')
-  return String(s || '')
-    .split('\n')
-    .map((line) => {
-      const t = inline(escapeHTML(line))
-      if (/^\s*[-*·]\s+/.test(line)) {
-        return '<div class="md-li">·&nbsp;&nbsp;' + t.replace(/^\s*[-*·]\s+/, '') + '</div>'
-      }
-      if (!line.trim()) return '<div style="height:8px"></div>'
-      return '<div class="md-p">' + t + '</div>'
-    })
-    .join('')
+  const src = String(s || '').replace(/\r\n/g, '\n')
+  if (!src.trim()) return ''
+  let html
+  try {
+    html = marked.parse(src, { async: false })
+  } catch (e) {
+    return escapeHTML(src).replace(/\n/g, '<br>')
+  }
+  html = DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    ADD_ATTR: ['target', 'rel'],
+  })
+  return html.replace(/<a /g, '<a target="_blank" rel="noopener noreferrer" ')
 }
+

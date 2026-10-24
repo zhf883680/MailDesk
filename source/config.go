@@ -360,22 +360,32 @@ func (cm *ConfigManager) SaveMailboxRuntime(id string, lastSync time.Time, lastE
 	})
 }
 
-// IsAdWhitelisted 判断发件人是否在广告白名单中（支持邮箱、域名或名称片段）。
+// IsAdWhitelisted 判断发件人是否在广告白名单中。
+// 支持两种写法：完整邮箱（精确匹配）、域名（匹配该域及其子域），避免误伤。
 func (cfg *Config) IsAdWhitelisted(e *Email) bool {
 	if e == nil {
 		return false
 	}
-	from := strings.ToLower(e.FromName + " " + e.FromAddr)
+	addr := strings.ToLower(strings.TrimSpace(e.FromAddr))
 	domain := ""
-	if i := strings.LastIndex(e.FromAddr, "@"); i >= 0 {
-		domain = strings.ToLower(e.FromAddr[i+1:])
+	if i := strings.LastIndex(addr, "@"); i >= 0 {
+		domain = addr[i+1:]
 	}
 	for _, w := range cfg.AI.AdWhitelist {
 		w = strings.ToLower(strings.TrimSpace(w))
+		w = strings.TrimPrefix(w, "@")
+		w = strings.TrimPrefix(w, "*.")
+		w = strings.TrimSuffix(w, "/")
 		if w == "" {
 			continue
 		}
-		if strings.Contains(from, w) || (domain != "" && strings.Contains(domain, w)) {
+		if strings.Contains(w, "@") {
+			if addr == w {
+				return true
+			}
+			continue
+		}
+		if domain == w || (domain != "" && strings.HasSuffix(domain, "."+w)) {
 			return true
 		}
 	}

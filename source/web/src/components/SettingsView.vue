@@ -532,8 +532,8 @@ const vTrans = '{{translation}}'
 
             <div class="field" style="margin-top: 16px; max-width: 520px">
               <label>广告白名单（发件人或域名，每行一个）</label>
-              <textarea v-model="adWhiteText" class="input" rows="3" placeholder="github.com&#10;notifications@stripe.com&#10;账单"></textarea>
-              <div class="hint" style="margin-top: 4px">命中的发件人不会被判为广告，适合 GitHub、Stripe、账单通知这类容易被误判的邮件。也可以在阅读页点标签图标单封纠正。</div>
+              <textarea v-model="adWhiteText" class="input" rows="3" placeholder="github.com&#10;notifications@stripe.com"></textarea>
+              <div class="hint" style="margin-top: 4px">整域匹配（github.com 同时匹配 mail.github.com），也可填完整邮箱精确匹配；命中的发件人不计入广告，也不会出现在「广告」分类。单封误判可在阅读页点标签图标纠正。</div>
             </div>
 
             <div class="form-actions">

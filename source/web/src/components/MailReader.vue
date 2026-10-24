@@ -235,7 +235,7 @@ function toList() {
           <span class="tag">自定义规则</span>
         </div>
         <div v-if="r.error" class="ai-error"><Icon name="alert" :size="13" />{{ r.error }}</div>
-        <div v-else class="rule-body" v-html="renderMarkdownish(r.content)"></div>
+        <div v-else class="rule-body md-body" v-html="renderMarkdownish(r.content)"></div>
       </div>
 
       <!-- 正文：原文 / 整页译文 切换 -->

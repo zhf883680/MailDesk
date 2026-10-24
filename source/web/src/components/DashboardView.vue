@@ -109,7 +109,7 @@ function mbColor(id) { return state.mailboxes.find((m) => m.id === id)?.color ||
       <div v-else-if="state.digestError" class="digest-empty">
         {{ state.digestError }}
       </div>
-      <div v-else-if="state.digest" class="digest-body" :class="{ clamp: !digestOpen }" v-html="renderMarkdownish(state.digest).replace(/\n/g, '<br>')"></div>
+      <div v-else-if="state.digest" class="digest-body md-body" :class="{ clamp: !digestOpen }" v-html="renderMarkdownish(state.digest)"></div>
       <div v-else class="digest-empty">
         {{ state.ai.enabled ? '点击下方按钮，让 AI 汇总今天最值得关注的事。' : '配置 AI 引擎后，这里会自动汇总每日重点邮件。' }}
       </div>

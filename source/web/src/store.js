@@ -113,6 +113,8 @@ export async function loadEmails() {
   state.listLoading = true
   try {
     state.emails = await api.emails({ mailbox: state.mailboxId, q: state.q, filter: state.filter, limit: 200 })
+    // 同步刷新统计，避免筛选结果与顶部计数（尤其白名单生效后）不一致
+    reloadBoot()
   } catch (e) {
     if (e.status === 401) { state.authed = false; return }
     toast(e.message, 'err')
