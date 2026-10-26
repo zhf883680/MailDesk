@@ -22,6 +22,7 @@ type Server struct {
 	st       *Store
 	ai       *AIService
 	fw       *Forwarder
+	push     *PushService
 	mu       sync.Mutex
 	sessions map[string]time.Time
 	ips      map[string]*ipState
@@ -33,9 +34,9 @@ type Server struct {
 const maxLoginFails = 3
 const sessionTTL = 30 * 24 * time.Hour
 
-func newServer(cm *ConfigManager, st *Store, ai *AIService, fw *Forwarder, static http.Handler) *Server {
+func newServer(cm *ConfigManager, st *Store, ai *AIService, fw *Forwarder, push *PushService, static http.Handler) *Server {
 	return &Server{
-		cm: cm, st: st, ai: ai, fw: fw, static: static,
+		cm: cm, st: st, ai: ai, fw: fw, push: push, static: static,
 		sessions: map[string]time.Time{},
 		ips:      map[string]*ipState{},
 		syncing:  map[string]bool{},
@@ -135,6 +136,8 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleAI(w, r, parts)
 	case "forward":
 		s.handleForward(w, r, parts)
+	case "push":
+		s.handlePush(w, r, parts)
 	case "digest":
 		s.handleDigest(w, r)
 	case "stats":
@@ -329,12 +332,17 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	if fwd.DeviceKey != "" {
 		fwd.DeviceKey = maskSecret(fwd.DeviceKey)
 	}
+	pushStatus := PushStatus{}
+	if s.push != nil {
+		pushStatus = s.push.Status()
+	}
 	ok(w, map[string]interface{}{
 		"mailboxes":      mbs,
 		"ai":             aiCfg,
 		"rules":          cfg.Rules,
 		"forward":        fwd,
 		"forward_rules":  cfg.ForwardRules,
+		"notifications":  pushStatus,
 		"sync_minutes":   cfg.SyncMinutes,
 		"fetch_limit":    cfg.FetchLimit,
 		"key_is_default": cfg.KeyIsDefault,
@@ -563,6 +571,11 @@ func (s *Server) syncMailbox(id string, force bool) {
 			s.fw.Dispatch(e.ID, firstSync)
 		}
 	}
+	if !firstSync {
+		for _, e := range added {
+			s.pushNotifyInBackground(e.ID)
+		}
+	}
 }
 
 // ---------- 邮件列表与详情 ----------
@@ -749,13 +762,6 @@ func (s *Server) emailView(id string) *Email {
 	e := s.st.Copy(id)
 	if e == nil {
 		return nil
-	}
-	// 兼容升级前缓存的老邮件：首次打开时补算 Markdown
-	if e.Markdown == "" && strings.TrimSpace(e.HTML) != "" {
-		if m := htmlToMarkdown(e.HTML); m != "" {
-			e.Markdown = m
-			s.st.Update(id, func(em *Email) { em.Markdown = m })
-		}
 	}
 	e.NeedAction = e.EffectiveNeedAction()
 	e.IsAd = s.cm.Get().IsAdLabel(e)

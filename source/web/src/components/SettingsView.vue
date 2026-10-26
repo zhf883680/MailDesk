@@ -3,6 +3,13 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import Icon from './Icon.vue'
 import { api } from '../api'
 import { state, reloadBoot, toast } from '../store'
+import {
+  currentPushEnvironment,
+  pushSupport,
+  enableWebPush,
+  getPushSubscription,
+  disableWebPush,
+} from '../notifications'
 
 const props = defineProps({ initialTab: { type: String, default: 'mailboxes' } })
 const tab = ref(props.initialTab)
@@ -13,6 +20,7 @@ const tabs = [
   { key: 'ai', label: 'AI 引擎', icon: 'bot' },
   { key: 'rules', label: '智能规则', icon: 'tag' },
   { key: 'forward', label: '关键词转发', icon: 'bell' },
+  { key: 'notifications', label: '浏览器通知', icon: 'bell' },
   { key: 'security', label: '安全与同步', icon: 'shield' },
 ]
 
@@ -188,11 +196,12 @@ const ruleIndex = ref(-1)
 const ruleForm = reactive({ name: '', keywords: '', from_contains: '', to_contains: '', prompt: '', enabled: true, color: '#0f6b5c' })
 const ruleSaving = ref(false)
 
-onMounted(() => {
+onMounted(async () => {
   rules.value = JSON.parse(JSON.stringify(state.rules || []))
   fwdRules.value = JSON.parse(JSON.stringify(state.forwardRules || []))
   Object.assign(aiForm, state.ai, { api_key: '' })
   Object.assign(fwdForm, state.forward, { device_key: '' })
+  await refreshPushState()
 })
 
 function openRule(i = -1) {
@@ -360,6 +369,89 @@ async function testForward() {
 function fwdScope(r) {
   if (!r.mailbox_ids || !r.mailbox_ids.length) return '全部邮箱'
   return r.mailbox_ids.map((id) => state.mailboxes.find((m) => m.id === id)?.name || id).join('、')
+}
+
+/* ---------------- 浏览器通知 ---------------- */
+const pushEnv = ref(currentPushEnvironment())
+const pushSub = ref(null)
+const pushBusy = ref(false)
+const pushTesting = ref(false)
+const pushMsg = ref({ text: '', err: false })
+const pushState = computed(() => pushSupport(pushEnv.value))
+const pushIssue = computed(() => ({
+  insecure: 'Web Push 需要 HTTPS。请通过 HTTPS 反向代理访问 MailDesk；localhost 调试除外。',
+  unsupported: '当前浏览器不支持 Web Push，请升级 Safari、Chrome 或 Edge。',
+  denied: '通知权限已被拒绝。请到系统设置中允许 MailDesk 通知，然后重新打开页面。',
+  'install-first': 'iPhone / iPad 请先用 Safari 打开本页，点「分享 → 添加到主屏幕」，再从主屏幕打开 MailDesk。',
+  ready: '',
+}[pushState.value] || '当前环境无法使用 Web Push。'))
+
+async function refreshPushState() {
+  pushEnv.value = currentPushEnvironment()
+  try {
+    pushSub.value = await getPushSubscription()
+  } catch (e) {
+    pushSub.value = null
+  }
+}
+
+async function enableNotifications() {
+  if (pushState.value !== 'ready' || pushBusy.value) return
+  pushBusy.value = true
+  pushMsg.value = { text: '', err: false }
+  try {
+    // 必须在用户点击的同步调用栈里申请权限，iOS 才会弹出系统确认框。
+    const permission = await Notification.requestPermission()
+    pushEnv.value = currentPushEnvironment()
+    if (permission !== 'granted') {
+      throw new Error(permission === 'denied' ? '通知权限已被拒绝' : '未获得通知权限')
+    }
+    const subscription = await enableWebPush(state.notifications.public_key)
+    await api.subscribePush(subscription)
+    await reloadBoot()
+    pushSub.value = subscription
+    pushMsg.value = { text: '本设备已开启 Web Push', err: false }
+    toast('浏览器通知已开启')
+  } catch (e) {
+    pushMsg.value = { text: e.message || '开启通知失败', err: true }
+    await refreshPushState()
+  } finally {
+    pushBusy.value = false
+  }
+}
+
+async function disableNotifications() {
+  if (pushBusy.value) return
+  pushBusy.value = true
+  pushMsg.value = { text: '', err: false }
+  try {
+    const endpoint = pushSub.value?.endpoint
+    if (endpoint) await api.unsubscribePush(endpoint)
+    await disableWebPush()
+    await reloadBoot()
+    pushSub.value = null
+    pushMsg.value = { text: '本设备通知已关闭', err: false }
+    toast('已关闭本设备通知')
+  } catch (e) {
+    pushMsg.value = { text: e.message || '关闭通知失败', err: true }
+  } finally {
+    pushBusy.value = false
+  }
+}
+
+async function testPushNotification() {
+  if (pushTesting.value) return
+  pushTesting.value = true
+  pushMsg.value = { text: '', err: false }
+  try {
+    const result = await api.testPush()
+    pushMsg.value = { text: result.message, err: false }
+    toast('测试通知已发送')
+  } catch (e) {
+    pushMsg.value = { text: e.message || '测试通知发送失败', err: true }
+  } finally {
+    pushTesting.value = false
+  }
 }
 
 /* ---------------- 安全 ---------------- */
@@ -784,6 +876,63 @@ const vTrans = '{{translation}}'
               </div>
             </div>
           </div>
+        </template>
+
+        <!-- 浏览器 Web Push -->
+        <template v-if="tab === 'notifications'">
+          <section class="settings-section">
+            <h3>浏览器通知 · Web Push</h3>
+            <p class="desc">
+              新邮件到达时发送系统通知，PWA 完全关闭后也能收到。iPhone / iPad 需要 iOS 16.4+、使用 HTTPS，并先添加到主屏幕。
+            </p>
+
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 18px">
+              <span class="badge" :class="pushSub ? 'badge-ai' : 'badge-low'">
+                {{ pushSub ? '本设备已订阅' : '本设备未订阅' }}
+              </span>
+              <span class="badge badge-low">服务端 {{ state.notifications.subscription_count || 0 }} 台设备</span>
+              <span v-if="pushEnv.iOS" class="badge" :class="pushEnv.standalone ? 'badge-low' : 'badge-high'">
+                {{ pushEnv.standalone ? '已从主屏幕运行' : '尚未添加到主屏幕' }}
+              </span>
+            </div>
+
+            <div v-if="pushIssue" class="ai-error" style="margin-bottom: 18px">
+              <Icon name="alert" :size="14" />
+              <div>{{ pushIssue }}</div>
+            </div>
+
+            <div class="form-actions">
+              <button
+                v-if="!pushSub"
+                class="btn btn-primary"
+                :disabled="pushBusy || pushState !== 'ready'"
+                @click="enableNotifications"
+              >
+                <Icon name="bell" :size="14" :class="{ spin: pushBusy }" />
+                {{ pushBusy ? '正在申请权限…' : '开启 Web Push' }}
+              </button>
+              <button v-else class="btn btn-primary" :disabled="pushBusy" @click="enableNotifications">
+                <Icon name="refresh" :size="14" :class="{ spin: pushBusy }" /> 重新同步订阅
+              </button>
+              <button v-if="state.notifications.subscription_count" class="btn" :disabled="pushTesting" @click="testPushNotification">
+                <Icon name="bell" :size="14" /> {{ pushTesting ? '正在发送…' : '发送测试通知' }}
+              </button>
+              <button v-if="pushSub" class="btn btn-danger" :disabled="pushBusy" @click="disableNotifications">关闭本设备通知</button>
+              <span class="msg" :class="{ err: pushMsg.err }">{{ pushMsg.text }}</span>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h3>通知规则</h3>
+            <p class="desc">通知与「关键词转发」相互独立，可以同时开启。</p>
+            <div style="display: grid; gap: 10px; font-size: 12.5px; line-height: 1.7; color: var(--ink-2)">
+              <div>· 默认通知每封新邮件，标题优先使用中文主题，正文显示发件人与摘要。</div>
+              <div>· 首次添加邮箱时同步到的历史邮件不会通知。</div>
+              <div>· MailDesk 正显示在前台时静默，避免重复打扰；点击系统通知会直接打开对应邮件。</div>
+              <div>· 同一封邮件只推送一次；失效的浏览器订阅会自动清理。</div>
+              <div>· Web Push 订阅保存在本机，通知内容经加密后由浏览器推送服务转发。</div>
+            </div>
+          </section>
         </template>
 
         <!-- 安全 -->

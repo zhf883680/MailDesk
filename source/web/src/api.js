@@ -57,6 +57,16 @@ export const api = {
   saveForwardRules: (data) => request('settings/forward-rules', { method: 'PUT', body: data }),
   testForward: () => request('forward/test', { method: 'POST' }),
   forwardEmail: (id) => request(`emails/${encodeURIComponent(id)}/forward`, { method: 'POST' }),
+  pushStatus: () => request('push/status'),
+  subscribePush: (subscription) => {
+    const json = subscription.toJSON()
+    return request('push/subscribe', {
+      method: 'POST',
+      body: { endpoint: json.endpoint, keys: json.keys },
+    })
+  },
+  unsubscribePush: (endpoint) => request('push/unsubscribe', { method: 'POST', body: { endpoint } }),
+  testPush: () => request('push/test', { method: 'POST' }),
   saveGeneral: (data) => request('settings/general', { method: 'PUT', body: data }),
   saveSecurity: (data) => request('settings/security', { method: 'PUT', body: data }),
   testAI: (data) => request('ai/test', { method: 'POST', body: data }),

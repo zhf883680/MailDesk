@@ -219,6 +219,14 @@ function mbColor(id) { return state.mailboxes.find((m) => m.id === id)?.color ||
 </template>
 
 <style scoped>
+.dash-grid {
+  align-items: stretch;
+}
+
+.dash-grid > .panel + .panel {
+  margin-top: 0;
+}
+
 @media (max-width: 900px) {
   .dash-grid { grid-template-columns: 1fr !important; }
 }

@@ -16,6 +16,7 @@ export const state = reactive({
   rules: [],
   forward: { enabled: false, base_url: 'https://api.day.app', device_key: '', group: 'MailDesk', sound: '', level: 'active' },
   forwardRules: [],
+  notifications: { enabled: false, public_key: '', subscription_count: 0 },
   general: { sync_minutes: 5, fetch_limit: 40 },
   keyIsDefault: false,
   stats: emptyStats(),
@@ -62,6 +63,7 @@ function applyBoot(d) {
   state.rules = d.rules || []
   state.forward = d.forward || state.forward
   state.forwardRules = d.forward_rules || []
+  state.notifications = d.notifications || state.notifications
   state.general = { sync_minutes: d.sync_minutes, fetch_limit: d.fetch_limit }
   state.stats = d.stats || emptyStats()
   state.keyIsDefault = !!d.key_is_default

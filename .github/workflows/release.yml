@@ -33,6 +33,7 @@ jobs:
         working-directory: source/web
         run: |
           npm install --no-audit --no-fund
+          npm test
           npm run build
 
       - name: Upload web assets

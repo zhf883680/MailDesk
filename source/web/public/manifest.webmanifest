@@ -1,7 +1,7 @@
 {
   "name": "MailDesk · AI 邮件台",
   "short_name": "MailDesk",
-  "description": "多邮箱统一收件、AI 翻译与分级、Bark 推送的私人邮件管理台",
+  "description": "多邮箱统一收件、AI 翻译与分级、Bark 与 Web Push 通知的私人邮件管理台",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

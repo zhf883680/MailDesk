@@ -177,30 +177,12 @@ func (a *AIService) Polish(text, instruction string) (string, error) {
 
 // ---------- 邮件处理流水线 ----------
 
-const translateSystem = `你是一名专业的邮件翻译。把用户给出的英文邮件翻译成自然、准确、通顺的简体中文。
-要求：
-1. 保留段落结构、列表、数字、链接与专有名词；
-2. 不要翻译人名、公司名、产品名（可保留英文）；
-3. 不要添加任何解释、注释或前后缀。
-输出格式必须严格为：
-###SUBJECT###
-（主题的中文译文，单行）
-###BODY###
-（正文的中文译文）`
-
-const mdTranslateSystem = `你是一名专业的邮件翻译。用户会给你一封 Markdown 格式的英文邮件，请把它翻译成自然、准确、通顺的简体中文。
+const plainTranslateSystem = `你是一名专业的邮件翻译。用户会给你一封从 HTML 中提取出来的纯文本英文邮件，请把它翻译成自然、准确、通顺的简体中文。
 严格要求：
-1. 完整保留 Markdown 结构：标题层级（#）、列表符号（- / 1.）、表格的竖线与分隔行、引用（>）、代码块围栏、链接与图片地址，全部原样保留；
-2. 只翻译可见文字；表格只翻译单元格里的文字，不要改动列数与对齐；URL、邮箱地址、数字、金额不翻译；
-3. 人名、公司名、产品名可保留英文；
-4. 不要输出解释、注释或 markdown 代码块包裹，直接返回译文 Markdown。`
-
-const htmlTranslateSystem = `你是一名专业的邮件网页翻译。用户会给你一封 HTML 格式的英文邮件，请把其中的可见文字翻译成简体中文，并原样返回完整 HTML。
-严格要求：
-1. 必须输出完整、合法的 HTML 文档，保留所有标签、属性、内联样式、表格结构与图片，不得增删或改写任何标签；
-2. 只翻译标签之间的可见文本（包括 title、alt、placeholder 等面向用户的文字），标签名、属性名、URL、颜色值、CSS 一律不改；
-3. 人名、公司名、产品名可保留英文；链接地址绝不翻译；
-4. 不要添加任何解释、注释、markdown 代码块标记或前后缀，第一个字符必须是 "<"。`
+1. 保留原文的段落与换行，不要把正文改写成 Markdown；
+2. URL、邮箱地址、数字、金额不翻译，人名、公司名、产品名可保留英文；
+3. 不要添加任何解释、注释、标题或 Markdown 代码块包裹；
+4. 直接返回纯文本译文。`
 
 const classifySystem = `你是邮件智能助理。请分析用户给出的邮件，并只输出一个 JSON 对象，不要包含 markdown 代码块或任何解释。
 JSON 字段：
@@ -237,7 +219,7 @@ func (a *AIService) process(id string) {
 	var firstErr error
 
 	// 1. 翻译（auto 模式随流水线处理；manual 模式由用户在阅读页点击时触发）
-	if cfg.Translate && cfg.TranslateMode != "manual" && isProbablyEnglish(email.Subject+" "+body) {
+	if cfg.Translate && cfg.TranslateMode != "manual" && isProbablyEnglish(email.Subject+" "+translationSource(email)) {
 		if err := a.translateNow(email, cfg); err != nil && firstErr == nil {
 			firstErr = err
 		}
@@ -328,6 +310,7 @@ func (a *AIService) Reanalyze(id string) {
 		e.RuleResults = nil
 		e.Translated = ""
 		e.TranslatedHTML = ""
+		e.TranslatedMD = ""
 		e.SubjectZh = ""
 		e.Summary = ""
 		e.Importance = ""
@@ -338,7 +321,7 @@ func (a *AIService) Reanalyze(id string) {
 	a.Enqueue(id)
 }
 
-// ---------- 整页 HTML 翻译 ----------
+// ---------- 纯文本翻译 ----------
 
 var translating sync.Map
 
@@ -350,78 +333,43 @@ func (a *AIService) translateSubject(cfg AIConfig, subject string) string {
 	return strings.TrimSpace(strings.Trim(out, "\"'“” \n"))
 }
 
-// translateNow 对单封邮件执行翻译：优先整页 HTML 翻译，失败时回退纯文本翻译。
-func (a *AIService) translateNow(email *Email, cfg AIConfig) error {
-	// 优先用 Markdown 翻译：结构保留、token 消耗远低于整页 HTML
-	if mdk := strings.TrimSpace(email.Markdown); mdk != "" {
-		user := "邮件主题：" + email.Subject + "\n\n" + truncate(mdk, 60000)
-		out, err := a.chat(cfg, mdTranslateSystem, user, 0.2)
-		if err == nil {
-			out = stripFences(out)
-			if len([]rune(out)) > 20 && !strings.Contains(out, "###SUBJECT###") {
-				subZh := a.translateSubject(cfg, email.Subject)
-				plain := markdownToText(out)
-				a.st.Update(email.ID, func(e *Email) {
-					e.TranslatedMD = out
-					if plain != "" {
-						e.Translated = truncate(plain, 60000)
-					}
-					if subZh != "" {
-						e.SubjectZh = subZh
-					}
-				})
-				return nil
-			}
-		}
+// translationSource 优先提取 HTML 中的可见文字；没有 HTML 时才使用纯文本正文。
+func translationSource(email *Email) string {
+	if email == nil {
+		return ""
 	}
-
-	// 没有 Markdown（转换失败）时，回退整页 HTML 翻译
 	if strings.TrimSpace(email.HTML) != "" {
-		html := truncate(email.HTML, 100000)
-		user := "邮件主题：" + email.Subject + "\n\n" + html
-		out, err := a.chat(cfg, htmlTranslateSystem, user, 0.2)
-		if err == nil {
-			out = stripFences(out)
-			if strings.Contains(out, "<") && len(out) > 100 {
-				subZh := a.translateSubject(cfg, email.Subject)
-				text := htmlToText(out)
-				a.st.Update(email.ID, func(e *Email) {
-					e.TranslatedHTML = out
-					if text != "" {
-						e.Translated = truncate(text, 60000)
-					}
-					if subZh != "" {
-						e.SubjectZh = subZh
-					}
-				})
-				return nil
-			}
+		if text := htmlToText(email.HTML); text != "" {
+			return text
 		}
-		// 整页翻译失败，回退纯文本
 	}
+	return normalizeText(email.Text)
+}
 
-	body := email.Text
-	if strings.TrimSpace(body) == "" {
-		body = htmlToText(email.HTML)
+// translateNow 把 HTML 中提取的可见文字翻译成纯文本。
+func (a *AIService) translateNow(email *Email, cfg AIConfig) error {
+	body := translationSource(email)
+	if body == "" {
+		return errors.New("邮件没有可翻译的正文")
 	}
-	maxChars := cfg.MaxChars
-	if maxChars <= 0 {
-		maxChars = 6000
-	}
-	body = truncate(body, maxChars)
+	body = truncate(body, 60000)
 	meta := fmt.Sprintf("发件人：%s <%s>\n主题：%s\n\n正文：\n%s", email.FromName, email.FromAddr, email.Subject, body)
-	out, err := a.chat(cfg, translateSystem, meta, 0.2)
+	out, err := a.chat(cfg, plainTranslateSystem, meta, 0.2)
 	if err != nil {
 		return err
 	}
-	sub, txt := parseTranslation(out)
+	out = stripFences(out)
+	if out == "" {
+		return errors.New("AI 未返回译文")
+	}
+	subZh := a.translateSubject(cfg, email.Subject)
 	a.st.Update(email.ID, func(e *Email) {
-		if sub != "" {
-			e.SubjectZh = sub
+		if subZh != "" {
+			e.SubjectZh = subZh
 		}
-		if txt != "" {
-			e.Translated = txt
-		}
+		e.Translated = truncate(out, 60000)
+		e.TranslatedHTML = ""
+		e.TranslatedMD = ""
 	})
 	return nil
 }
@@ -446,7 +394,7 @@ func (a *AIService) TranslateEmail(id string) (*Email, error) {
 	if !cfg.Translate {
 		return nil, errors.New("翻译功能未开启，请在设置中启用")
 	}
-	if !isProbablyEnglish(email.Subject + " " + email.Text) {
+	if !isProbablyEnglish(email.Subject + " " + translationSource(email)) {
 		return a.st.Get(id), nil // 中文邮件无需翻译
 	}
 	if err := a.translateNow(email, cfg); err != nil {
@@ -465,27 +413,6 @@ func stripFences(s string) string {
 		}
 	}
 	return strings.TrimSpace(s)
-}
-
-func parseTranslation(out string) (subject, body string) {
-	s := strings.TrimSpace(out)
-	s = strings.TrimPrefix(s, "```")
-	s = strings.TrimSuffix(s, "```")
-	i := strings.Index(s, "###SUBJECT###")
-	j := strings.Index(s, "###BODY###")
-	if i >= 0 && j > i {
-		subject = strings.TrimSpace(s[i+len("###SUBJECT###") : j])
-		body = strings.TrimSpace(s[j+len("###BODY###"):])
-		return strings.Trim(subject, "\"'“”"), body
-	}
-	if j >= 0 {
-		return "", strings.TrimSpace(s[j+len("###BODY###"):])
-	}
-	lines := strings.SplitN(s, "\n", 2)
-	if len(lines) == 2 && len([]rune(lines[0])) < 120 {
-		return strings.Trim(strings.TrimSpace(lines[0]), "\"'“”"), strings.TrimSpace(lines[1])
-	}
-	return "", s
 }
 
 func extractJSON(s string) string {

@@ -418,6 +418,7 @@ a { color: var(--accent); text-decoration: none; }
 .mail-md table { font-size: 12.5px; }
 .mail-md img { display: block; margin: 10px 0; }
 .mail-md blockquote { color: var(--ink-2); }
+.mail-plain { font-size: 14.5px; line-height: 1.9; color: #2b2822; white-space: pre-wrap; word-break: break-word; }
 .md-empty {
   display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
   padding: 22px 16px; border: 1px dashed var(--line-strong); border-radius: 10px;

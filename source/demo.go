@@ -63,9 +63,6 @@ func seedDemo(cm *ConfigManager, st *Store) {
 		e.AIStatus = "done"
 		e.AIAt = now
 		e.ID = makeID(e.MailboxID, e.UID)
-		if e.HTML != "" && e.Markdown == "" {
-			e.Markdown = htmlToMarkdown(e.HTML)
-		}
 		st.Upsert(e)
 	}
 	// —— 工作邮箱 ——
@@ -108,20 +105,6 @@ Head of Brand, Brightside`,
 2. 付费社交素材由谁负责——我们还是你们团队？
 
 如果这两点都没问题，我们可以在周五前完成合同签署。
-
-祝好，
-Marta
-Brightside 品牌负责人`,
-		TranslatedMD: `## 第四季度推广 — 范围与时间表
-
-Alex 你好，感谢你修改后的方案。我们管理层对项目范围已达成一致，但需要把上线时间推迟到 **11 月 18 日**，以便零售团队准备门店物料。
-
-| 项目 | 预算（美元） |
-|:--|--:|
-| 德语 / 法语本地化落地页 | 12,400 |
-| 付费社交素材 | 6,800 |
-
-> 目标：本周五完成合同签署。
 
 祝好，
 Marta

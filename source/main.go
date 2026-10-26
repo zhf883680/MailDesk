@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const appVersion = "1.3.4"
+const appVersion = "1.4.0"
 
 //go:embed all:web/dist
 var webFS embed.FS
@@ -94,7 +94,12 @@ func main() {
 	ai.Start()
 	fw := newForwarder(cm, st)
 	fw.Start()
-	srv := newServer(cm, st, ai, fw, staticHandler())
+	push, err := newPushService(cm, st)
+	if err != nil {
+		log.Fatalf("初始化 Web Push 失败: %v", err)
+	}
+	push.Start()
+	srv := newServer(cm, st, ai, fw, push, staticHandler())
 	if !*demo {
 		go srv.startBackgroundSync()
 	}

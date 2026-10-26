@@ -68,6 +68,7 @@ type Email struct {
 	AdIgnored  bool         `json:"ad_ignored,omitempty"`
 	Forwarded  bool         `json:"forwarded"`
 	ForwardLog []ForwardLog `json:"forward_log"`
+	Notified   bool         `json:"notified,omitempty"`
 }
 
 type EmailSummary struct {
@@ -353,6 +354,7 @@ func (s *Store) MergeFetched(mb string, fetched []*Email) (added, needAI []*Emai
 			e.AIError = old.AIError
 			e.Flagged = old.Flagged
 			e.Forwarded = old.Forwarded
+			e.Notified = old.Notified
 			if len(old.ForwardLog) > 0 {
 				e.ForwardLog = old.ForwardLog
 			}

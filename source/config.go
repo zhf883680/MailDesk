@@ -87,17 +87,18 @@ type ForwardRule struct {
 }
 
 type Config struct {
-	Salt         string        `json:"salt"`
-	LoginKeyHash string        `json:"login_key_hash"`
-	KeyIsDefault bool          `json:"key_is_default"`
-	AI           AIConfig      `json:"ai"`
-	Mailboxes    []Mailbox     `json:"mailboxes"`
-	Rules        []Rule        `json:"rules"`
-	Forward      ForwardConfig `json:"forward"`
-	ForwardRules []ForwardRule `json:"forward_rules"`
-	SyncMinutes  int           `json:"sync_minutes"`
-	FetchLimit   int           `json:"fetch_limit"`
-	Demo         bool          `json:"demo"`
+	Salt          string        `json:"salt"`
+	LoginKeyHash  string        `json:"login_key_hash"`
+	KeyIsDefault  bool          `json:"key_is_default"`
+	AI            AIConfig      `json:"ai"`
+	Mailboxes     []Mailbox     `json:"mailboxes"`
+	Rules         []Rule        `json:"rules"`
+	Forward       ForwardConfig `json:"forward"`
+	ForwardRules  []ForwardRule `json:"forward_rules"`
+	Notifications PushConfig    `json:"notifications"`
+	SyncMinutes   int           `json:"sync_minutes"`
+	FetchLimit    int           `json:"fetch_limit"`
+	Demo          bool          `json:"demo"`
 }
 
 const defaultLoginKey = "admin123"
@@ -190,6 +191,7 @@ func (cm *ConfigManager) Get() *Config {
 	c.Mailboxes = append([]Mailbox(nil), cm.cfg.Mailboxes...)
 	c.Rules = append([]Rule(nil), cm.cfg.Rules...)
 	c.ForwardRules = append([]ForwardRule(nil), cm.cfg.ForwardRules...)
+	c.Notifications.Subscriptions = append([]PushSubscription(nil), cm.cfg.Notifications.Subscriptions...)
 	for i := range c.Mailboxes {
 		c.Mailboxes[i].HasPass = c.Mailboxes[i].PassEnc != ""
 	}
@@ -203,6 +205,7 @@ func (cm *ConfigManager) Update(fn func(c *Config) error) error {
 	next.Mailboxes = append([]Mailbox(nil), cm.cfg.Mailboxes...)
 	next.Rules = append([]Rule(nil), cm.cfg.Rules...)
 	next.ForwardRules = append([]ForwardRule(nil), cm.cfg.ForwardRules...)
+	next.Notifications.Subscriptions = append([]PushSubscription(nil), cm.cfg.Notifications.Subscriptions...)
 	if err := fn(&next); err != nil {
 		return err
 	}

@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onBeforeUnmount, ref, computed } from 'vue'
+import { onMounted, onBeforeUnmount, ref, computed, watch } from 'vue'
 import LoginView from './components/LoginView.vue'
 import Sidebar from './components/Sidebar.vue'
 import MailList from './components/MailList.vue'
@@ -9,7 +9,7 @@ import SettingsView from './components/SettingsView.vue'
 import ComposeModal from './components/ComposeModal.vue'
 import Icon from './components/Icon.vue'
 import Logo from './components/Logo.vue'
-import { state, init, reloadBoot, reloadStats, loadEmails, refreshSelected, openCompose, refreshData, toast } from './store'
+import { state, init, reloadBoot, reloadStats, loadEmails, refreshSelected, openCompose, selectEmail, refreshData, toast } from './store'
 
 let timer = null
 
@@ -47,6 +47,29 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', onVisible)
   window.addEventListener('pageshow', onPageShow)
 })
+
+let notificationTarget = ''
+watch(() => state.authed, async (authed) => {
+  if (authed) await openNotificationTarget()
+})
+
+async function openNotificationTarget() {
+  if (!state.authed) return
+  const params = new URLSearchParams(window.location.search)
+  const id = params.get('email')
+  if (!id || notificationTarget === id) return
+  notificationTarget = id
+  try {
+    state.view = 'mailbox'
+    state.mailboxId = 'all'
+    state.filter = 'all'
+    await selectEmail(id)
+    await loadEmails()
+    window.history.replaceState({}, '', window.location.pathname)
+  } finally {
+    notificationTarget = ''
+  }
+}
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)
   window.removeEventListener('touchstart', onTouchStart)

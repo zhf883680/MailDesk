@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"fmt"
-	"html"
 	"io"
 	"mime"
 	"net"
@@ -12,14 +11,11 @@ import (
 	"strings"
 	"time"
 
-	md "github.com/JohannesKaufmann/html-to-markdown/v2/converter"
-	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/base"
-	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/commonmark"
-	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/table"
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 	_ "github.com/emersion/go-message/charset"
 	"github.com/emersion/go-message/mail"
+	xhtml "golang.org/x/net/html"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
 	"golang.org/x/text/transform"
@@ -336,10 +332,6 @@ func applyRawBody(e *Email, raw []byte) {
 	}
 	e.Text = normalizeText(text)
 	e.HTML = sanitizeHTML(htmlBody)
-	if e.HTML != "" {
-		// 转成 Markdown：去掉样式与冗余标签，后续翻译更省 token，展示也更干净
-		e.Markdown = htmlToMarkdown(e.HTML)
-	}
 	if e.Text == "" && e.HTML != "" {
 		e.Text = htmlToText(e.HTML)
 	}
@@ -349,56 +341,10 @@ func applyRawBody(e *Email, raw []byte) {
 	e.Snippet = snippetOf(e.Text)
 }
 
-// htmlToMarkdown 把已净化的 HTML 邮件转成 Markdown，去掉内联样式与布局标签。
-func htmlToMarkdown(src string) string {
-	if strings.TrimSpace(src) == "" {
-		return ""
-	}
-	out, err := mdConv.ConvertString(src)
-	if err != nil {
-		return ""
-	}
-	out = strings.TrimSpace(out)
-	out = reBlankMD.ReplaceAllString(out, "\n\n")
-	return truncate(out, 60000)
-}
-
-var reBlankMD = regexp.MustCompile(`\n{3,}`)
-
-// mdConv 带表格插件，避免账单类邮件里的表格被压成一行文字
-var mdConv = md.NewConverter(
-	md.WithPlugins(
-		base.NewBasePlugin(),
-		commonmark.NewCommonmarkPlugin(),
-		table.NewTablePlugin(table.WithHeaderPromotion(true)),
-	),
-)
-
-// markdownToText 粗略去掉 Markdown 记号，作为纯文本兜底与搜索用。
-func markdownToText(s string) string {
-	s = reMdImage.ReplaceAllString(s, "$1")
-	s = reMdLink.ReplaceAllString(s, "$1")
-	s = reMdTableSep.ReplaceAllString(s, "")
-	s = reMdMark.ReplaceAllString(s, "")
-	s = reMdHeading.ReplaceAllString(s, "$1")
-	s = strings.ReplaceAll(s, "\n", "\n")
-	return normalizeText(s)
-}
-
-var (
-	reMdImage    = regexp.MustCompile(`!\[([^\]]*)\]\([^)]*\)`)
-	reMdLink     = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
-	reMdTableSep = regexp.MustCompile(`(?m)^\|?[\s:-]*-[\s:|-]*\|?$`)
-	reMdMark     = regexp.MustCompile("(\\*\\*|__|`)")
-	reMdHeading  = regexp.MustCompile(`(?m)^#{1,6}\s+`)
-)
-
 var (
 	reSelfClose = regexp.MustCompile(`(?is)<(script|style|iframe|object|embed|link|meta)[^>]*/?>`)
 	reEventAttr = regexp.MustCompile(`(?is)\son[a-z]+\s*=\s*"[^"]*"|\son[a-z]+\s*=\s*'[^']*'|\son[a-z]+\s*=\s*[^\s>]+`)
 	reJSURL     = regexp.MustCompile(`(?is)javascript:`)
-	reBr        = regexp.MustCompile(`(?is)<br\s*/?>|</p>|</div>|</tr>|</h[1-6]>|</li>`)
-	reAllTag    = regexp.MustCompile(`(?is)<[^>]+>`)
 	reSpace     = regexp.MustCompile(`[ \t\x{00a0}]+`)
 	reBlank     = regexp.MustCompile(`\n{3,}`)
 )
@@ -422,14 +368,84 @@ func sanitizeHTML(s string) string {
 }
 
 func htmlToText(s string) string {
-	for _, tag := range []string{"script", "style"} {
-		re := regexp.MustCompile(`(?is)<` + tag + `[^>]*>.*?</` + tag + `>`)
-		s = re.ReplaceAllString(s, "")
+	doc, err := xhtml.Parse(strings.NewReader(s))
+	if err != nil {
+		return ""
 	}
-	s = reBr.ReplaceAllString(s, "\n")
-	s = reAllTag.ReplaceAllString(s, " ")
-	s = html.UnescapeString(s)
-	return normalizeText(s)
+
+	var out strings.Builder
+	var walk func(*xhtml.Node)
+	walk = func(n *xhtml.Node) {
+		switch n.Type {
+		case xhtml.TextNode:
+			out.WriteString(n.Data)
+			return
+		case xhtml.ElementNode:
+			tag := strings.ToLower(n.Data)
+			if hiddenHTMLNode(tag, n.Attr) {
+				return
+			}
+			switch tag {
+			case "br":
+				out.WriteByte('\n')
+				return
+			case "td", "th":
+				out.WriteByte(' ')
+			}
+			block := htmlBlockTags[tag]
+			if block {
+				out.WriteByte('\n')
+			}
+			for child := n.FirstChild; child != nil; child = child.NextSibling {
+				walk(child)
+			}
+			if block {
+				out.WriteByte('\n')
+			}
+			return
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(doc)
+	return normalizeText(out.String())
+}
+
+var htmlBlockTags = map[string]bool{
+	"address": true, "article": true, "aside": true, "blockquote": true,
+	"dd": true, "div": true, "dl": true, "dt": true, "fieldset": true,
+	"figcaption": true, "figure": true, "footer": true, "form": true,
+	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+	"header": true, "hr": true, "li": true, "main": true, "nav": true,
+	"ol": true, "p": true, "pre": true, "section": true, "table": true,
+	"tbody": true, "td": true, "tfoot": true, "th": true, "thead": true,
+	"tr": true, "ul": true,
+}
+
+func hiddenHTMLNode(tag string, attrs []xhtml.Attribute) bool {
+	switch tag {
+	case "head", "script", "style", "template", "noscript", "iframe", "object", "embed", "svg", "canvas":
+		return true
+	}
+	for _, attr := range attrs {
+		switch strings.ToLower(attr.Key) {
+		case "hidden":
+			return true
+		case "aria-hidden":
+			if strings.EqualFold(strings.TrimSpace(attr.Val), "true") {
+				return true
+			}
+		case "style":
+			style := strings.ToLower(strings.ReplaceAll(attr.Val, " ", ""))
+			if strings.Contains(style, "display:none") ||
+				strings.Contains(style, "visibility:hidden") ||
+				strings.Contains(style, "mso-hide:all") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func truncateBytes(s string, n int) string {

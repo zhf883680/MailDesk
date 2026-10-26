@@ -253,7 +253,7 @@ function toList() {
         <div v-else class="rule-body md-body" v-html="renderMarkdownish(r.content)"></div>
       </div>
 
-      <!-- 正文：Markdown 译文 / 网页原文 -->
+      <!-- 正文：纯文本译文 / 网页原文 -->
       <div class="mail-body-wrap">
         <div class="body-toolbar">
           <div class="seg">
@@ -269,7 +269,7 @@ function toList() {
 
         <div v-if="translating" class="html-translating">
           <Icon name="refresh" :size="15" class="spin" />
-          正在翻译邮件内容…（Markdown 结构会完整保留）
+          正在提取网页文字并翻译…
         </div>
 
         <!-- 网页原文：原版 HTML 渲染 -->
@@ -281,10 +281,9 @@ function toList() {
           referrerpolicy="no-referrer"
         ></iframe>
 
-        <!-- Markdown 译文 -->
-        <div v-else class="mail-md md-body">
-          <div v-if="mail.translated_md" v-html="renderMarkdownish(mail.translated_md)"></div>
-          <div v-else-if="mail.translated" class="mail-body translated">{{ mail.translated }}</div>
+        <!-- 纯文本译文：保留 AI 输出中的段落换行，不渲染 Markdown -->
+        <div v-else class="mail-plain">
+          <div v-if="mail.translated" class="mail-body translated">{{ mail.translated }}</div>
           <div v-else class="md-empty">
             <Icon name="languages" :size="16" />
             <span>{{ state.ai.translate === false ? '翻译功能已在设置中关闭。' : '这封邮件还没有译文，点「译文」重新尝试。' }}</span>
