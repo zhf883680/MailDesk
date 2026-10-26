@@ -5,6 +5,7 @@ import { api } from '../api'
 import { state, reloadBoot, toast } from '../store'
 import {
   currentPushEnvironment,
+  pushIssueFor,
   pushSupport,
   enableWebPush,
   getPushSubscription,
@@ -378,13 +379,7 @@ const pushBusy = ref(false)
 const pushTesting = ref(false)
 const pushMsg = ref({ text: '', err: false })
 const pushState = computed(() => pushSupport(pushEnv.value))
-const pushIssue = computed(() => ({
-  insecure: 'Web Push 需要 HTTPS。请通过 HTTPS 反向代理访问 MailDesk；localhost 调试除外。',
-  unsupported: '当前浏览器不支持 Web Push，请升级 Safari、Chrome 或 Edge。',
-  denied: '通知权限已被拒绝。请到系统设置中允许 MailDesk 通知，然后重新打开页面。',
-  'install-first': 'iPhone / iPad 请先用 Safari 打开本页，点「分享 → 添加到主屏幕」，再从主屏幕打开 MailDesk。',
-  ready: '',
-}[pushState.value] || '当前环境无法使用 Web Push。'))
+const pushIssue = computed(() => pushIssueFor(pushState.value))
 
 async function refreshPushState() {
   pushEnv.value = currentPushEnvironment()

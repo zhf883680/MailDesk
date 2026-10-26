@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -65,6 +66,7 @@ type PushService struct {
 	send     pushSender
 	queue    chan string
 	inflight sync.Map
+	logger   *log.Logger
 }
 
 func newPushService(cm *ConfigManager, st *Store) (*PushService, error) {
@@ -76,9 +78,10 @@ func newPushServiceWithSender(cm *ConfigManager, st *Store, sender pushSender) (
 		return nil, err
 	}
 	service := &PushService{
-		cm:    cm,
-		st:    st,
-		queue: make(chan string, 256),
+		cm:     cm,
+		st:     st,
+		queue:  make(chan string, 256),
+		logger: log.Default(),
 	}
 	if sender != nil {
 		service.send = sender
@@ -108,6 +111,8 @@ func newPushServiceWithSender(cm *ConfigManager, st *Store, sender pushSender) (
 			return resp.StatusCode, nil
 		}
 	}
+	status := service.Status()
+	service.logf("[push] 服务已初始化 subscriptions=%d enabled=%t", status.SubscriptionCount, status.Enabled)
 	return service, nil
 }
 
@@ -120,6 +125,7 @@ func ensureVAPIDKeys(cm *ConfigManager) error {
 	if err != nil {
 		return fmt.Errorf("生成 Web Push 密钥失败: %w", err)
 	}
+	log.Printf("[push] 首次启动，正在生成并保存 VAPID 密钥")
 	return cm.Update(func(c *Config) error {
 		if c.Notifications.VAPIDPublicKey == "" || c.Notifications.VAPIDPrivateKey == "" {
 			c.Notifications.VAPIDPrivateKey = privateKey
@@ -133,6 +139,7 @@ func (p *PushService) Start() {
 	if p == nil {
 		return
 	}
+	p.logf("[push] 后台发送队列已启动")
 	go func() {
 		for id := range p.queue {
 			_ = p.NotifyEmail(id)
@@ -170,13 +177,16 @@ func (p *PushService) Subscribe(sub PushSubscription) error {
 	}
 	sub.CreatedAt = time.Now()
 	sub.UserAgent = truncate(sub.UserAgent, 300)
-	return p.cm.Update(func(c *Config) error {
+	action := "新增"
+	total := 0
+	err := p.cm.Update(func(c *Config) error {
 		subs := make([]PushSubscription, 0, len(c.Notifications.Subscriptions)+1)
 		replaced := false
 		for _, old := range c.Notifications.Subscriptions {
 			if old.Endpoint == sub.Endpoint {
 				subs = append(subs, sub)
 				replaced = true
+				action = "更新"
 			} else {
 				subs = append(subs, old)
 			}
@@ -189,8 +199,15 @@ func (p *PushService) Subscribe(sub PushSubscription) error {
 		}
 		c.Notifications.Subscriptions = subs
 		c.Notifications.Enabled = true
+		total = len(subs)
 		return nil
 	})
+	if err != nil {
+		p.logf("[push] 保存订阅失败 target=%s error=%v", safePushTarget(sub.Endpoint), err)
+		return err
+	}
+	p.logf("[push] %s订阅 target=%s subscriptions=%d", action, safePushTarget(sub.Endpoint), total)
+	return nil
 }
 
 func (p *PushService) Unsubscribe(endpoint string) error {
@@ -198,58 +215,85 @@ func (p *PushService) Unsubscribe(endpoint string) error {
 	if endpoint == "" {
 		return errors.New("推送订阅地址不能为空")
 	}
-	return p.cm.Update(func(c *Config) error {
+	removed := 0
+	total := 0
+	err := p.cm.Update(func(c *Config) error {
 		subs := make([]PushSubscription, 0, len(c.Notifications.Subscriptions))
 		for _, sub := range c.Notifications.Subscriptions {
 			if sub.Endpoint != endpoint {
 				subs = append(subs, sub)
+			} else {
+				removed++
 			}
 		}
 		c.Notifications.Subscriptions = subs
 		c.Notifications.Enabled = len(subs) > 0
+		total = len(subs)
 		return nil
 	})
+	if err != nil {
+		p.logf("[push] 删除订阅失败 target=%s error=%v", safePushTarget(endpoint), err)
+		return err
+	}
+	p.logf("[push] 删除订阅 target=%s removed=%d subscriptions=%d", safePushTarget(endpoint), removed, total)
+	return nil
 }
 
 func (p *PushService) NotifyEmail(emailID string) error {
 	email := p.st.Copy(emailID)
-	if email == nil || email.Notified {
+	if email == nil {
+		p.logf("[push] 跳过通知：邮件不存在 id=%s", emailID)
+		return nil
+	}
+	if email.Notified {
+		p.logf("[push] 跳过通知：邮件已发送过 id=%s", emailID)
 		return nil
 	}
 	subs := p.cm.Get().Notifications.Subscriptions
 	if len(subs) == 0 {
+		p.logf("[push] 跳过通知：没有已订阅设备 id=%s", emailID)
 		return nil
 	}
+	p.logf("[push] 开始发送新邮件通知 id=%s subscriptions=%d", emailID, len(subs))
 	okCount, err := p.sendToSubscriptions(buildPushPayload(email))
 	if okCount > 0 {
 		p.st.Update(emailID, func(e *Email) { e.Notified = true })
+		p.logf("[push] 新邮件通知完成 id=%s success=%d", emailID, okCount)
 		return nil
 	}
 	if err != nil {
+		p.logf("[push] 新邮件通知失败 id=%s success=0 error=%v", emailID, err)
 		return err
 	}
+	p.logf("[push] 新邮件通知失败 id=%s success=0 reason=无可用订阅", emailID)
 	return errors.New("当前没有可用的通知订阅")
 }
 
 func (p *PushService) SendTest() error {
 	subs := p.cm.Get().Notifications.Subscriptions
 	if len(subs) == 0 {
+		p.logf("[push] 测试通知失败：没有已订阅设备")
 		return errors.New("请先开启浏览器通知")
 	}
+	p.logf("[push] 开始发送测试通知 subscriptions=%d", len(subs))
 	payload, _ := json.Marshal(pushMessage{
 		Title: "MailDesk 测试通知",
 		Body:  "Web Push 已经连接成功。",
 		URL:   "/",
 		Tag:   "maildesk-test",
 		Icon:  "/icon-192.png",
+		Data:  map[string]any{"force": true, "test": true},
 	})
 	okCount, err := p.sendToSubscriptions(payload)
 	if okCount > 0 {
+		p.logf("[push] 测试通知完成 success=%d", okCount)
 		return nil
 	}
 	if err != nil {
+		p.logf("[push] 测试通知失败 success=0 error=%v", err)
 		return err
 	}
+	p.logf("[push] 测试通知失败 success=0 reason=无可用订阅")
 	return errors.New("通知发送失败，请重新开启通知")
 }
 
@@ -259,11 +303,15 @@ func (p *PushService) sendToSubscriptions(payload []byte) (int, error) {
 	var lastErr error
 	var expired []string
 	for _, sub := range subs {
+		target := safePushTarget(sub.Endpoint)
+		started := time.Now()
 		status, err := p.send(payload, sub)
 		if err != nil {
+			p.logf("[push] 请求失败 target=%s duration=%s error=%s", target, time.Since(started).Round(time.Millisecond), safePushError(err, sub.Endpoint))
 			lastErr = err
 			continue
 		}
+		p.logf("[push] 请求完成 target=%s status=%d duration=%s", target, status, time.Since(started).Round(time.Millisecond))
 		if status >= 200 && status < 300 {
 			okCount++
 			continue
@@ -271,10 +319,12 @@ func (p *PushService) sendToSubscriptions(payload []byte) (int, error) {
 		lastErr = fmt.Errorf("推送服务返回 HTTP %d", status)
 		if status == http.StatusGone || status == http.StatusNotFound {
 			expired = append(expired, sub.Endpoint)
+			p.logf("[push] 订阅已失效 target=%s status=%d", target, status)
 		}
 	}
 	if len(expired) > 0 {
 		_ = p.removeSubscriptions(expired)
+		p.logf("[push] 已清理失效订阅 count=%d", len(expired))
 	}
 	return okCount, lastErr
 }
@@ -349,6 +399,32 @@ func decodeBase64URL(value string) ([]byte, error) {
 		return b, nil
 	}
 	return base64.URLEncoding.DecodeString(value)
+}
+
+func safePushTarget(endpoint string) string {
+	u, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil || u.Host == "" {
+		return "invalid"
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+func safePushError(err error, endpoint string) string {
+	if err == nil {
+		return ""
+	}
+	message := err.Error()
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint != "" {
+		message = strings.ReplaceAll(message, endpoint, safePushTarget(endpoint))
+	}
+	return message
+}
+
+func (p *PushService) logf(format string, args ...any) {
+	if p != nil && p.logger != nil {
+		p.logger.Printf(format, args...)
+	}
 }
 
 func (s *Server) handlePush(w http.ResponseWriter, r *http.Request, parts []string) {

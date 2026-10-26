@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -114,5 +117,84 @@ func TestPushServiceSendsNewEmailOnlyOnce(t *testing.T) {
 	}
 	if got := st.Get(email.ID); got == nil || !got.Notified {
 		t.Fatalf("email not marked notified: %#v", got)
+	}
+}
+
+func TestPushLogsHideSubscriptionSecret(t *testing.T) {
+	dir := t.TempDir()
+	cm, err := newConfigManager(dir)
+	if err != nil {
+		t.Fatalf("newConfigManager: %v", err)
+	}
+	st, err := newStore(filepath.Join(dir, "emails"))
+	if err != nil {
+		t.Fatalf("newStore: %v", err)
+	}
+	service, err := newPushServiceWithSender(cm, st, func(payload []byte, sub PushSubscription) (int, error) {
+		return 201, nil
+	})
+	if err != nil {
+		t.Fatalf("newPushService: %v", err)
+	}
+	var logs bytes.Buffer
+	service.logger = log.New(&logs, "", 0)
+
+	if err := service.Subscribe(validPushSubscription(t)); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	got := logs.String()
+	if !strings.Contains(got, "[push]") || !strings.Contains(got, "push.example.com") {
+		t.Fatalf("push log missing useful context: %q", got)
+	}
+	if strings.Contains(got, "/subscription/abc") {
+		t.Fatalf("push log exposed subscription secret: %q", got)
+	}
+}
+
+func TestSafePushErrorRedactsSubscriptionEndpoint(t *testing.T) {
+	sub := validPushSubscription(t)
+	err := fmt.Errorf(`Post %q: connection refused`, sub.Endpoint)
+
+	got := safePushError(err, sub.Endpoint)
+	if strings.Contains(got, "/subscription/abc") {
+		t.Fatalf("safePushError exposed subscription secret: %q", got)
+	}
+	if !strings.Contains(got, "push.example.com") || !strings.Contains(got, "connection refused") {
+		t.Fatalf("safePushError removed useful context: %q", got)
+	}
+}
+
+func TestSendTestForcesNotificationWhenAppIsVisible(t *testing.T) {
+	dir := t.TempDir()
+	cm, err := newConfigManager(dir)
+	if err != nil {
+		t.Fatalf("newConfigManager: %v", err)
+	}
+	st, err := newStore(filepath.Join(dir, "emails"))
+	if err != nil {
+		t.Fatalf("newStore: %v", err)
+	}
+	var sent []byte
+	service, err := newPushServiceWithSender(cm, st, func(payload []byte, sub PushSubscription) (int, error) {
+		sent = append([]byte(nil), payload...)
+		return 201, nil
+	})
+	if err != nil {
+		t.Fatalf("newPushService: %v", err)
+	}
+	if err := service.Subscribe(validPushSubscription(t)); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	if err := service.SendTest(); err != nil {
+		t.Fatalf("SendTest: %v", err)
+	}
+
+	var message pushMessage
+	if err := json.Unmarshal(sent, &message); err != nil {
+		t.Fatalf("decode push payload: %v", err)
+	}
+	if force, ok := message.Data["force"].(bool); !ok || !force {
+		t.Fatalf("test notification must set data.force=true: %#v", message.Data)
 	}
 }

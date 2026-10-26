@@ -11,6 +11,7 @@
 | 能力 | 说明 |
 | --- | --- |
 | 多邮箱接入 | 任意支持 IMAP / SMTP 的邮箱，内置 Gmail、Outlook、QQ、163、126、阿里企业邮、iCloud 预设 |
+| 发件人头像 | 邮件列表显示稳定的首字母头像，中英文发件人均自动生成，同一发件人始终保持相同配色 |
 | 自定义 AI 接口 | OpenAI 兼容协议，Base URL / API Key / 模型全部可填（OpenAI、DeepSeek、Moonshot、one-api、Ollama…） |
 | 英文邮件翻译 | 从 HTML 中提取可见文字后翻译为纯文本，自动忽略脚本、样式与隐藏内容；阅读页可在「译文 / 网页原文」间切换，原 HTML 排版不受翻译影响 |
 | 自定义规则 | 命中关键词、发件人或收件人后，用你的提示词让 AI 提炼，结果以卡片形式展示在邮件页 |
@@ -240,7 +241,7 @@ AI 处理是后台队列（3 并发），界面每几秒自动刷新状态。失
 通知设置支持：
 
 - 多设备分别订阅，服务端可同时推送。
-- 「发送测试通知」验证链路。
+- 「发送测试通知」验证链路；测试通知即使 MailDesk 正在前台也会显示，便于确认系统通知是否正常。
 - 关闭本设备通知并清理服务端订阅。
 - 浏览器返回 404 / 410 的失效订阅自动移除。
 
@@ -278,6 +279,24 @@ data/
 ```
 
 或删除 `data/config.json` 里的 `login_key_hash` 字段，重启后恢复默认 `admin123`。
+
+---
+
+## 运行日志
+
+程序将版本、同步和 Web Push 日志输出到标准输出，可直接用 `docker logs`、systemd journal 或启动终端查看。典型日志包括：
+
+```text
+[startup] MailDesk v1.4.1 starting addr=:120 data=/data demo=false
+[push] 服务已初始化 subscriptions=1 enabled=true
+[sync] start mailbox=work email=me@example.com last_sync=2026-10-26T11:00:00+08:00 force=false
+[sync] complete mailbox=work fetched=40 added=2 ai_queued=2 first_sync=false
+[push] 开始发送新邮件通知 id=work:123 subscriptions=1
+[push] 请求完成 target=https://push.example.com status=201 duration=245ms
+[push] 新邮件通知完成 id=work:123 success=1
+```
+
+日志不会输出邮件正文、VAPID 私钥或完整推送订阅 URL；订阅地址仅记录到域名级别。
 
 ---
 
@@ -376,4 +395,4 @@ web/        Vue 3 前端
 
 ---
 
-版本 1.4.0 · 单机自部署 · 数据不出本机
+版本 1.4.1 · 单机自部署 · 数据不出本机

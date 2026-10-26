@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { pushSupport, urlBase64ToUint8Array } from '../src/notifications.js'
+import { pushIssueFor, pushSupport, urlBase64ToUint8Array } from '../src/notifications.js'
 
 const readyEnv = {
   secureContext: true,
@@ -31,4 +31,12 @@ test('pushSupport is ready on supported iOS home-screen PWA', () => {
 
 test('urlBase64ToUint8Array decodes a VAPID key', () => {
   assert.deepEqual([...urlBase64ToUint8Array('AQIDBA')], [1, 2, 3, 4])
+})
+
+test('pushIssueFor leaves the ready state without an error message', () => {
+  assert.equal(pushIssueFor('ready'), '')
+})
+
+test('pushIssueFor explains an unsupported browser', () => {
+  assert.match(pushIssueFor('unsupported'), /不支持 Web Push/)
 })

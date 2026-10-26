@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"sort"
@@ -549,20 +550,28 @@ func (s *Server) syncMailbox(id string, force bool) {
 	if !exists || mb.Demo {
 		return
 	}
+	lastSync := "never"
+	if !mb.LastSync.IsZero() {
+		lastSync = mb.LastSync.Format(time.RFC3339)
+	}
+	log.Printf("[sync] start mailbox=%s email=%s last_sync=%s force=%t", id, mb.Email, lastSync, force)
 	cfg := s.cm.Get()
 	pass, err := s.cm.Password(mb)
 	if err != nil || pass == "" {
 		s.cm.SaveMailboxRuntime(id, time.Time{}, "未设置邮箱密码或授权码")
+		log.Printf("[sync] skipped mailbox=%s reason=missing_password", id)
 		return
 	}
 	emails, err := fetchMailbox(mb, pass, cfg.FetchLimit)
 	if err != nil {
 		s.cm.SaveMailboxRuntime(id, time.Time{}, err.Error())
+		log.Printf("[sync] failed mailbox=%s error=%v", id, err)
 		return
 	}
 	firstSync := mb.LastSync.IsZero()
 	added, need := s.st.MergeFetched(id, emails)
 	s.cm.SaveMailboxRuntime(id, time.Now(), "")
+	log.Printf("[sync] complete mailbox=%s fetched=%d added=%d ai_queued=%d first_sync=%t", id, len(emails), len(added), len(need), firstSync)
 	for _, e := range need {
 		s.ai.Enqueue(e.ID)
 	}

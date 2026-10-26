@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const appVersion = "1.4.0"
+const appVersion = "1.4.1"
 
 //go:embed all:web/dist
 var webFS embed.FS
@@ -71,6 +71,7 @@ func main() {
 	flag.Parse()
 
 	abs, _ := filepath.Abs(*dataDir)
+	log.Printf("[startup] MailDesk v%s starting addr=%s data=%s demo=%t", appVersion, *addr, abs, *demo)
 	cm, err := newConfigManager(abs)
 	if err != nil {
 		log.Fatalf("初始化配置失败: %v", err)
@@ -117,6 +118,7 @@ func main() {
 	fmt.Println("  └─────────────────────────────────────────────┘")
 	fmt.Printf("  访问地址 : http://localhost%s\n", portOf(*addr))
 	fmt.Printf("  数据目录 : %s\n", abs)
+	fmt.Printf("  版本     : v%s\n", appVersion)
 	if cfg.KeyIsDefault {
 		fmt.Println("  访问密钥 : admin123  （首次登录后请在「设置 - 安全」中修改）")
 	} else {
@@ -127,6 +129,7 @@ func main() {
 	}
 	fmt.Println("  安全策略 : 同一 IP 连续 3 次密钥错误将锁定，重启程序后解锁")
 	fmt.Println("")
+	log.Printf("[server] HTTP service ready addr=%s", *addr)
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {

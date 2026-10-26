@@ -26,6 +26,18 @@ export function pushSupport(env) {
   return 'ready'
 }
 
+const pushIssues = {
+  insecure: 'Web Push 需要 HTTPS。请通过 HTTPS 反向代理访问 MailDesk；localhost 调试除外。',
+  unsupported: '当前浏览器不支持 Web Push，请升级 Safari、Chrome 或 Edge。',
+  denied: '通知权限已被拒绝。请到系统设置中允许 MailDesk 通知，然后重新打开页面。',
+  'install-first': 'iPhone / iPad 请先用 Safari 打开本页，点「分享 → 添加到主屏幕」，再从主屏幕打开 MailDesk。',
+  ready: '',
+}
+
+export function pushIssueFor(state) {
+  return pushIssues[state] ?? '当前环境无法使用 Web Push。'
+}
+
 export function currentPushEnvironment() {
   return {
     secureContext: typeof window !== 'undefined' && window.isSecureContext,

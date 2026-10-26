@@ -8,6 +8,7 @@ self.addEventListener('push', (event) => {
 
   const title = payload.title || 'MailDesk'
   const target = payload.url || '/'
+  const force = payload.data?.force === true
   const options = {
     body: payload.body || '收到一封新邮件',
     tag: payload.tag || 'maildesk',
@@ -18,7 +19,7 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    if (windows.some((client) => client.visibilityState === 'visible')) return
+    if (!force && windows.some((client) => client.visibilityState === 'visible')) return
     await self.registration.showNotification(title, options)
   })())
 })

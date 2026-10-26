@@ -6,7 +6,7 @@ import {
   setAdIgnored,
 } from '../store'
 import { api } from '../api'
-import { fmtFull, fmtTime, initials, colorFor, importanceLabel, renderMarkdownish } from '../utils'
+import { fmtFull, fmtTime, importanceLabel, renderMarkdownish, senderAvatar } from '../utils'
 
 const bodyView = ref('zh') // zh=译文, html=网页原文
 const translating = ref(false)
@@ -15,6 +15,7 @@ const confirmDelete = ref(false)
 const mail = computed(() => state.selected)
 const hasTrans = computed(() => !!(mail.value && (mail.value.translated_md || mail.value.translated_html || mail.value.translated)))
 const mailbox = computed(() => state.mailboxes.find((m) => m.id === mail.value?.mailbox_id))
+const senderAvatarView = computed(() => senderAvatar(mail.value?.from_name, mail.value?.from_addr))
 
 watch(() => state.selected?.id, () => {
   // 有译文时默认看译文；尚未翻译则先展示网页原文
@@ -68,10 +69,6 @@ async function retryForward() {
   } finally {
     forwarding.value = false
   }
-}
-
-function avatarColor() {
-  return colorFor(mail.value?.from_addr || mail.value?.from_name)
 }
 
 function backToList() {
@@ -163,7 +160,7 @@ function toList() {
       <p v-if="mail.subject_zh && mail.subject_zh !== mail.subject" class="reader-subject-zh">{{ mail.subject }}</p>
 
       <div class="sender-row">
-        <div class="avatar" :style="{ background: avatarColor() }">{{ initials(mail.from_name, mail.from_addr) }}</div>
+        <div class="avatar" :style="{ background: senderAvatarView.color }">{{ senderAvatarView.label }}</div>
         <div class="sender-info">
           <div class="sender-name">
             {{ mail.from_name || mail.from_addr }}

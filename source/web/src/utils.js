@@ -49,6 +49,14 @@ export function colorFor(seed) {
   return palette[h % palette.length]
 }
 
+export function senderAvatar(name, addr) {
+  const seed = String(addr || name || '').trim().toLowerCase()
+  return {
+    label: initials(name, addr),
+    color: colorFor(seed),
+  }
+}
+
 export function importanceLabel(v) {
   return { high: '重要', medium: '一般', low: '低' }[v] || ''
 }

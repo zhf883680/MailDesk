@@ -63,3 +63,48 @@ test('service worker shows a push notification when the app is not visible', asy
   await clickPending
   assert.deepEqual(shown[1], { opened: 'https://mail.example.com/?email=mb%3A1' })
 })
+
+test('service worker shows a forced test notification while the app is visible', async () => {
+  const source = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8')
+  const listeners = {}
+  const shown = []
+  let pending
+  const self = {
+    location: { origin: 'https://mail.example.com' },
+    addEventListener(type, callback) {
+      listeners[type] = callback
+    },
+    registration: {
+      showNotification(title, options) {
+        shown.push({ title, options })
+        return Promise.resolve()
+      },
+    },
+    clients: {
+      matchAll() {
+        return Promise.resolve([{ visibilityState: 'visible' }])
+      },
+    },
+  }
+
+  vm.runInNewContext(source, { self, URL, Promise, console })
+  listeners.push({
+    data: {
+      json() {
+        return {
+          title: 'MailDesk 测试通知',
+          body: 'Web Push 已经连接成功。',
+          tag: 'maildesk-test',
+          data: { force: true, test: true },
+        }
+      },
+    },
+    waitUntil(promise) {
+      pending = promise
+    },
+  })
+  await pending
+
+  assert.equal(shown.length, 1)
+  assert.equal(shown[0].title, 'MailDesk 测试通知')
+})
