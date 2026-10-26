@@ -35,10 +35,13 @@ export function dayGroup(iso) {
 export function initials(name, addr) {
   const src = (name || addr || '?').trim()
   if (!src) return '?'
-  if (/[\u4e00-\u9fa5]/.test(src)) return src.slice(-2)
+  // 头像只放一个字：跳过【】、空格、英文等装饰，取首个汉字，
+  // 例如「淘宝网」→「淘」、「【速界】Github日报」→「速」
+  const cjk = src.replace(/[^\u4e00-\u9fa5]/g, '')
+  if (cjk) return cjk.slice(0, 1)
   const parts = src.replace(/[^\w\s.@-]/g, '').split(/[\s.@_-]+/).filter(Boolean)
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-  return src.slice(0, 2).toUpperCase()
+  if (parts.length) return parts[0][0].toUpperCase()
+  return src.slice(0, 1).toUpperCase()
 }
 
 const palette = ['#0f6b5c', '#b0761c', '#5b5bd6', '#9c4221', '#2c6e9b', '#7a5c3e', '#a03d63', '#3f6b3f']

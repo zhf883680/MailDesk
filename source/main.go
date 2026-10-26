@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const appVersion = "1.4.3"
+const appVersion = "1.4.4"
 
 //go:embed all:web/dist
 var webFS embed.FS

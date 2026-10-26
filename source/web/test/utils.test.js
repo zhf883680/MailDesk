@@ -7,13 +7,16 @@ test('senderAvatar uses initials and a stable sender color', () => {
   const first = senderAvatar('Marta Lindqvist', 'marta@brightside.example')
   const second = senderAvatar('Marta Lindqvist', 'MARTA@brightside.example')
 
-  assert.equal(first.label, 'ML')
+  assert.equal(first.label, 'M')
   assert.equal(first.color, second.color)
   assert.match(first.color, /^#[0-9a-f]{6}$/)
 })
 
-test('senderAvatar uses the last two Chinese characters', () => {
-  assert.equal(senderAvatar('淘宝网', 'notice@taobao.example').label, '宝网')
+test('senderAvatar uses a single character', () => {
+  assert.equal(senderAvatar('淘宝网', 'notice@taobao.example').label, '淘')
+  assert.equal(senderAvatar('【速界】Github日报', 'digest@example.com').label, '速')
+  assert.equal(senderAvatar('张三丰', 'zhang@example.com').label, '张')
+  assert.equal(senderAvatar('Marta Lindqvist', 'marta@brightside.example').label, 'M')
 })
 
 test('backdrop dismissal is blocked while a form contains unsaved changes', () => {
