@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { senderAvatar } from '../src/utils.js'
+import { senderAvatar, shouldDismissOnBackdrop } from '../src/utils.js'
 
 test('senderAvatar uses initials and a stable sender color', () => {
   const first = senderAvatar('Marta Lindqvist', 'marta@brightside.example')
@@ -14,4 +14,18 @@ test('senderAvatar uses initials and a stable sender color', () => {
 
 test('senderAvatar uses the last two Chinese characters', () => {
   assert.equal(senderAvatar('淘宝网', 'notice@taobao.example').label, '宝网')
+})
+
+test('backdrop dismissal is blocked while a form contains unsaved changes', () => {
+  const initial = { to: '', subject: '', mailbox_ids: [] }
+  const current = { to: 'alex@example.com', subject: '', mailbox_ids: [] }
+
+  assert.equal(shouldDismissOnBackdrop(initial, current), false)
+})
+
+test('backdrop dismissal is allowed when a form is unchanged', () => {
+  const initial = { to: 'alex@example.com', subject: '', mailbox_ids: ['work'] }
+  const current = { to: 'alex@example.com', subject: '', mailbox_ids: ['work'] }
+
+  assert.equal(shouldDismissOnBackdrop(initial, current), true)
 })

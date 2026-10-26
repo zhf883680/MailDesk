@@ -61,6 +61,23 @@ export function importanceLabel(v) {
   return { high: '重要', medium: '一般', low: '低' }[v] || ''
 }
 
+function sameFormValue(a, b) {
+  if (Object.is(a, b)) return true
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+    return a.every((value, index) => sameFormValue(value, b[index]))
+  }
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) return false
+  return aKeys.every((key) => Object.hasOwn(b, key) && sameFormValue(a[key], b[key]))
+}
+
+export function shouldDismissOnBackdrop(initial, current) {
+  return sameFormValue(initial, current)
+}
+
 export function escapeHTML(s) {
   return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }

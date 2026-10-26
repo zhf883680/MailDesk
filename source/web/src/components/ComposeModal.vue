@@ -3,8 +3,10 @@ import { reactive, ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import Icon from './Icon.vue'
 import { api } from '../api'
 import { state, toast } from '../store'
+import { shouldDismissOnBackdrop } from '../utils'
 
 const draft = reactive({ ...state.composeDraft })
+const initialDraft = { ...draft }
 const sending = ref(false)
 const polishing = ref(false)
 const err = ref('')
@@ -23,6 +25,14 @@ function parseList(s) {
 
 function close() {
   state.composing = false
+}
+
+function closeFromBackdrop() {
+  if (!shouldDismissOnBackdrop(initialDraft, draft)) {
+    toast('已保留填写内容，请使用取消按钮关闭')
+    return
+  }
+  close()
 }
 
 async function polish() {
@@ -66,7 +76,7 @@ async function send() {
 }
 
 function onKey(e) {
-  if (e.key === 'Escape') close()
+  if (e.key === 'Escape') closeFromBackdrop()
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') send()
 }
 
@@ -81,7 +91,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="close">
+  <div class="modal-backdrop" @click.self="closeFromBackdrop">
     <div class="modal wide">
       <div class="modal-head">
         <h3>写邮件</h3>
