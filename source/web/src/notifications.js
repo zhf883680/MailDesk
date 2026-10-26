@@ -50,6 +50,16 @@ export function currentPushEnvironment() {
   }
 }
 
+export function applicationServerKeyMatches(subscription, publicKey) {
+  const current = subscription?.options?.applicationServerKey
+  if (!current || !publicKey) return false
+  const actual = current instanceof ArrayBuffer
+    ? new Uint8Array(current)
+    : new Uint8Array(current.buffer, current.byteOffset, current.byteLength)
+  const expected = urlBase64ToUint8Array(publicKey)
+  return actual.length === expected.length && actual.every((value, index) => value === expected[index])
+}
+
 export async function getPushSubscription() {
   if (!('serviceWorker' in navigator)) return null
   const registration = await navigator.serviceWorker.getRegistration('/')
@@ -58,9 +68,17 @@ export async function getPushSubscription() {
 
 export async function enableWebPush(publicKey) {
   if (!publicKey) throw new Error('服务端尚未生成 Web Push 公钥')
-  const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+  const registration = await navigator.serviceWorker.register('/sw.js', {
+    scope: '/',
+    updateViaCache: 'none',
+  })
+  try { await registration.update() } catch (error) { /* 下次打开仍会检查更新 */ }
   await navigator.serviceWorker.ready
   let subscription = await registration.pushManager.getSubscription()
+  if (subscription && !applicationServerKeyMatches(subscription, publicKey)) {
+    await subscription.unsubscribe()
+    subscription = null
+  }
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,

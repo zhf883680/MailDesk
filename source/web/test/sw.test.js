@@ -108,3 +108,36 @@ test('service worker shows a forced test notification while the app is visible',
   assert.equal(shown.length, 1)
   assert.equal(shown[0].title, 'MailDesk 测试通知')
 })
+
+test('service worker activates updates immediately', async () => {
+  const source = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8')
+  const listeners = {}
+  let skipped = false
+  let claimed = false
+  const self = {
+    location: { origin: 'https://mail.example.com' },
+    addEventListener(type, callback) {
+      listeners[type] = callback
+    },
+    skipWaiting() {
+      skipped = true
+      return Promise.resolve()
+    },
+    clients: {
+      claim() {
+        claimed = true
+        return Promise.resolve()
+      },
+    },
+  }
+
+  vm.runInNewContext(source, { self, URL, Promise, console })
+  let pending
+  listeners.install({ waitUntil(promise) { pending = promise } })
+  await pending
+  listeners.activate({ waitUntil(promise) { pending = promise } })
+  await pending
+
+  assert.equal(skipped, true)
+  assert.equal(claimed, true)
+})

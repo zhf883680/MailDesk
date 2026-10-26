@@ -1,3 +1,15 @@
+const SW_VERSION = '1.4.2'
+
+self.addEventListener('install', (event) => {
+  console.info(`[MailDesk SW] v${SW_VERSION} installing`)
+  event.waitUntil(self.skipWaiting())
+})
+
+self.addEventListener('activate', (event) => {
+  console.info(`[MailDesk SW] v${SW_VERSION} activated`)
+  event.waitUntil(self.clients.claim())
+})
+
 self.addEventListener('push', (event) => {
   let payload = {}
   try {
@@ -16,17 +28,23 @@ self.addEventListener('push', (event) => {
     badge: '/icon-192.png',
     data: { ...(payload.data || {}), url: target },
   }
+  console.info('[MailDesk SW] push received', { tag: options.tag, force })
 
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    if (!force && windows.some((client) => client.visibilityState === 'visible')) return
+    if (!force && windows.some((client) => client.visibilityState === 'visible')) {
+      console.info('[MailDesk SW] notification skipped because app is visible', { tag: options.tag })
+      return
+    }
     await self.registration.showNotification(title, options)
+    console.info('[MailDesk SW] notification displayed', { tag: options.tag })
   })())
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const target = new URL(event.notification.data?.url || '/', self.location.origin).href
+  console.info('[MailDesk SW] notification clicked', { target })
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     for (const client of windows) {

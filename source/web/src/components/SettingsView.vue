@@ -401,10 +401,7 @@ async function enableNotifications() {
     if (permission !== 'granted') {
       throw new Error(permission === 'denied' ? '通知权限已被拒绝' : '未获得通知权限')
     }
-    const subscription = await enableWebPush(state.notifications.public_key)
-    await api.subscribePush(subscription)
-    await reloadBoot()
-    pushSub.value = subscription
+    await syncCurrentPushSubscription()
     pushMsg.value = { text: '本设备已开启 Web Push', err: false }
     toast('浏览器通知已开启')
   } catch (e) {
@@ -413,6 +410,14 @@ async function enableNotifications() {
   } finally {
     pushBusy.value = false
   }
+}
+
+async function syncCurrentPushSubscription() {
+  const subscription = await enableWebPush(state.notifications.public_key)
+  await api.subscribePush(subscription)
+  await reloadBoot()
+  pushSub.value = subscription
+  return subscription
 }
 
 async function disableNotifications() {
@@ -439,6 +444,9 @@ async function testPushNotification() {
   pushTesting.value = true
   pushMsg.value = { text: '', err: false }
   try {
+    if (pushSub.value && pushState.value === 'ready') {
+      await syncCurrentPushSubscription()
+    }
     const result = await api.testPush()
     pushMsg.value = { text: result.message, err: false }
     toast('测试通知已发送')

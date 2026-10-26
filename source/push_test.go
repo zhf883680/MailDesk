@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -196,5 +197,75 @@ func TestSendTestForcesNotificationWhenAppIsVisible(t *testing.T) {
 	}
 	if force, ok := message.Data["force"].(bool); !ok || !force {
 		t.Fatalf("test notification must set data.force=true: %#v", message.Data)
+	}
+}
+
+func TestPushServiceRemovesRejectedSubscription(t *testing.T) {
+	dir := t.TempDir()
+	cm, err := newConfigManager(dir)
+	if err != nil {
+		t.Fatalf("newConfigManager: %v", err)
+	}
+	st, err := newStore(filepath.Join(dir, "emails"))
+	if err != nil {
+		t.Fatalf("newStore: %v", err)
+	}
+	service, err := newPushServiceWithSender(cm, st, func(payload []byte, sub PushSubscription) (int, error) {
+		return 403, nil
+	})
+	if err != nil {
+		t.Fatalf("newPushService: %v", err)
+	}
+	var logs bytes.Buffer
+	service.logger = log.New(&logs, "", 0)
+	if err := service.Subscribe(validPushSubscription(t)); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	if err := service.SendTest(); err == nil {
+		t.Fatal("SendTest succeeded for rejected subscription")
+	}
+	if got := len(cm.Get().Notifications.Subscriptions); got != 0 {
+		t.Fatalf("rejected subscription was not removed: %d remain", got)
+	}
+	if !strings.Contains(logs.String(), "status=403") {
+		t.Fatalf("push log missing rejection status: %q", logs.String())
+	}
+}
+
+func TestPushRejectionDetailIsLoggedAndRemoved(t *testing.T) {
+	dir := t.TempDir()
+	cm, err := newConfigManager(dir)
+	if err != nil {
+		t.Fatalf("newConfigManager: %v", err)
+	}
+	st, err := newStore(filepath.Join(dir, "emails"))
+	if err != nil {
+		t.Fatalf("newStore: %v", err)
+	}
+	service, err := newPushServiceWithSender(cm, st, func(payload []byte, sub PushSubscription) (int, error) {
+		return 403, errors.New("BadJwtToken")
+	})
+	if err != nil {
+		t.Fatalf("newPushService: %v", err)
+	}
+	var logs bytes.Buffer
+	service.logger = log.New(&logs, "", 0)
+	if err := service.Subscribe(validPushSubscription(t)); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	_ = service.SendTest()
+	if got := len(cm.Get().Notifications.Subscriptions); got != 0 {
+		t.Fatalf("rejected subscription was not removed: %d remain", got)
+	}
+	if !strings.Contains(logs.String(), "BadJwtToken") {
+		t.Fatalf("push rejection detail missing from log: %q", logs.String())
+	}
+}
+
+func TestVAPIDSubscriberIsPublicHTTPSURL(t *testing.T) {
+	if !strings.HasPrefix(vapidSubscriber, "https://") {
+		t.Fatalf("vapidSubscriber must be a public HTTPS URL, got %q", vapidSubscriber)
 	}
 }

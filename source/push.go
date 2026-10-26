@@ -20,6 +20,7 @@ import (
 const (
 	maxPushSubscriptions = 20
 	pushTTLSeconds       = 24 * 60 * 60
+	vapidSubscriber      = "https://github.com/zhf883680/MailDesk"
 )
 
 type PushKeys struct {
@@ -97,7 +98,7 @@ func newPushServiceWithSender(cm *ConfigManager, st *Store, sender pushSender) (
 				},
 			}, &webpush.Options{
 				HTTPClient:      client,
-				Subscriber:      "maildesk@localhost.invalid",
+				Subscriber:      vapidSubscriber,
 				TTL:             pushTTLSeconds,
 				Urgency:         webpush.UrgencyNormal,
 				VAPIDPublicKey:  cfg.VAPIDPublicKey,
@@ -107,7 +108,14 @@ func newPushServiceWithSender(cm *ConfigManager, st *Store, sender pushSender) (
 				return 0, err
 			}
 			defer resp.Body.Close()
-			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			detail := strings.TrimSpace(truncate(string(raw), 300))
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				if detail == "" {
+					detail = http.StatusText(resp.StatusCode)
+				}
+				return resp.StatusCode, fmt.Errorf("HTTP %d: %s", resp.StatusCode, detail)
+			}
 			return resp.StatusCode, nil
 		}
 	}
@@ -309,6 +317,10 @@ func (p *PushService) sendToSubscriptions(payload []byte) (int, error) {
 		if err != nil {
 			p.logf("[push] 请求失败 target=%s duration=%s error=%s", target, time.Since(started).Round(time.Millisecond), safePushError(err, sub.Endpoint))
 			lastErr = err
+			if rejectedPushStatus(status) {
+				expired = append(expired, sub.Endpoint)
+				p.logf("[push] 订阅已失效 target=%s status=%d", target, status)
+			}
 			continue
 		}
 		p.logf("[push] 请求完成 target=%s status=%d duration=%s", target, status, time.Since(started).Round(time.Millisecond))
@@ -317,7 +329,7 @@ func (p *PushService) sendToSubscriptions(payload []byte) (int, error) {
 			continue
 		}
 		lastErr = fmt.Errorf("推送服务返回 HTTP %d", status)
-		if status == http.StatusGone || status == http.StatusNotFound {
+		if rejectedPushStatus(status) {
 			expired = append(expired, sub.Endpoint)
 			p.logf("[push] 订阅已失效 target=%s status=%d", target, status)
 		}
@@ -407,6 +419,10 @@ func safePushTarget(endpoint string) string {
 		return "invalid"
 	}
 	return u.Scheme + "://" + u.Host
+}
+
+func rejectedPushStatus(status int) bool {
+	return status == http.StatusForbidden || status == http.StatusGone || status == http.StatusNotFound
 }
 
 func safePushError(err error, endpoint string) string {

@@ -1,7 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { pushIssueFor, pushSupport, urlBase64ToUint8Array } from '../src/notifications.js'
+import {
+  applicationServerKeyMatches,
+  pushIssueFor,
+  pushSupport,
+  urlBase64ToUint8Array,
+} from '../src/notifications.js'
 
 const readyEnv = {
   secureContext: true,
@@ -39,4 +44,12 @@ test('pushIssueFor leaves the ready state without an error message', () => {
 
 test('pushIssueFor explains an unsupported browser', () => {
   assert.match(pushIssueFor('unsupported'), /不支持 Web Push/)
+})
+
+test('applicationServerKeyMatches rejects a subscription created with another VAPID key', () => {
+  const subscription = {
+    options: { applicationServerKey: new Uint8Array([1, 2, 3, 4]).buffer },
+  }
+  assert.equal(applicationServerKeyMatches(subscription, 'AQIDBA'), true)
+  assert.equal(applicationServerKeyMatches(subscription, 'AQIDBQ'), false)
 })
