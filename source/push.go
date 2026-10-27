@@ -269,6 +269,10 @@ func (p *PushService) NotifyEmail(emailID string) error {
 		p.logf("[push] 跳过通知：邮件已发送过 id=%s", emailID)
 		return nil
 	}
+	if p.cm.Get().IsAdLabel(email) {
+		p.logf("[push] 跳过通知：广告默认忽略 id=%s", emailID)
+		return nil
+	}
 	subs := p.cm.Get().Notifications.Subscriptions
 	if len(subs) == 0 {
 		p.logf("[push] 跳过通知：没有已订阅设备 id=%s", emailID)

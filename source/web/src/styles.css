@@ -468,7 +468,7 @@ a { color: var(--accent); text-decoration: none; }
 .page-head h1 { font-family: var(--serif); font-size: clamp(26px, 3vw, 34px); font-weight: 500; margin: 0; letter-spacing: 0.3px; }
 .page-head p { color: var(--muted); font-size: 13px; margin: 8px 0 0; line-height: 1.7; }
 
-.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
+.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 26px; }
 .stat-card {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 16px 17px; text-align: left; transition: all 0.18s ease; position: relative; overflow: hidden;
@@ -616,7 +616,7 @@ a { color: var(--accent); text-decoration: none; }
   .page { padding: 26px 26px 50px; }
 }
 @media (max-width: 980px) {
-  .stat-grid { grid-template-columns: 1fr 1fr; }
+  .stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sidebar { position: fixed; left: 0; top: 0; bottom: 0; transform: translateX(-100%); transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1); box-shadow: var(--shadow-lg); width: min(310px, 86vw); padding: 22px 16px 16px; }
   .sidebar.open { transform: translateX(0); }
   .sidebar-scrim { position: fixed; inset: 0; background: rgba(20, 18, 14, 0.42); z-index: 25; backdrop-filter: blur(1px); }

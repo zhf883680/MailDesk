@@ -63,12 +63,13 @@ type Email struct {
 	AIAt           time.Time    `json:"ai_at"`
 	AIError        string       `json:"ai_error"`
 
-	Handled    bool         `json:"handled"`
-	AdOverride string       `json:"ad_override,omitempty"` // not_ad | ad | ""
-	AdIgnored  bool         `json:"ad_ignored,omitempty"`
-	Forwarded  bool         `json:"forwarded"`
-	ForwardLog []ForwardLog `json:"forward_log"`
-	Notified   bool         `json:"notified,omitempty"`
+	Handled      bool         `json:"handled"`
+	AdOverride   string       `json:"ad_override,omitempty"` // not_ad | ad | ""
+	AdIgnored    bool         `json:"ad_ignored,omitempty"`
+	AdIgnoredSet bool         `json:"ad_ignored_set,omitempty"` // 用户是否明确选择过忽略状态
+	Forwarded    bool         `json:"forwarded"`
+	ForwardLog   []ForwardLog `json:"forward_log"`
+	Notified     bool         `json:"notified,omitempty"`
 }
 
 type EmailSummary struct {
@@ -109,6 +110,14 @@ func (e *Email) EffectiveIsAd() bool {
 	return e.IsAd
 }
 
+// EffectiveAdIgnored 默认忽略所有广告；只有用户明确取消忽略后才计入广告列表。
+func (e *Email) EffectiveAdIgnored() bool {
+	if e.AdIgnoredSet {
+		return e.AdIgnored
+	}
+	return e.EffectiveIsAd()
+}
+
 func (e *Email) ToSummary() EmailSummary {
 	return EmailSummary{
 		ID: e.ID, MailboxID: e.MailboxID, Subject: e.Subject, SubjectZh: e.SubjectZh, FromName: e.FromName,
@@ -116,7 +125,7 @@ func (e *Email) ToSummary() EmailSummary {
 		Flagged: e.Flagged, AIStatus: e.AIStatus, Summary: e.Summary,
 		Importance: e.Importance, NeedAction: e.EffectiveNeedAction(), IsAd: e.EffectiveIsAd(),
 		Category: e.Category, HasTrans: e.Translated != "" || e.TranslatedHTML != "" || e.TranslatedMD != "", RuleCount: len(e.RuleResults),
-		Forwarded: e.Forwarded, Handled: e.Handled, AdIgnored: e.AdIgnored,
+		Forwarded: e.Forwarded, Handled: e.Handled, AdIgnored: e.EffectiveAdIgnored(),
 	}
 }
 
@@ -351,6 +360,7 @@ func (s *Store) MergeFetched(mb string, fetched []*Email) (added, needAI []*Emai
 			e.Handled = old.Handled
 			e.AdOverride = old.AdOverride
 			e.AdIgnored = old.AdIgnored
+			e.AdIgnoredSet = old.AdIgnoredSet
 			e.Summary = old.Summary
 			e.Importance = old.Importance
 			e.NeedAction = old.NeedAction

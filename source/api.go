@@ -273,19 +273,20 @@ func (s *Server) stats() Stats {
 		ms := st.ByMailbox[e.MailboxID]
 		ms.Total++
 		st.Total++
-		if !e.Seen {
+		isAd := cfg.IsAdLabel(e)
+		if !cfg.IsEffectivelySeen(e) {
 			ms.Unread++
 			st.Unread++
 		}
-		if e.Importance == "high" && !e.Handled {
+		if !isAd && e.Importance == "high" && !e.Handled {
 			ms.High++
 			st.High++
 		}
-		if e.EffectiveNeedAction() {
+		if !isAd && e.EffectiveNeedAction() {
 			ms.NeedAction++
 			st.NeedAction++
 		}
-		if cfg.CountsAsAd(e) {
+		if isAd && !cfg.IsAdIgnored(e) {
 			ms.Ads++
 			st.Ads++
 		}
@@ -639,7 +640,7 @@ func (s *Server) handleEmails(w http.ResponseWriter, r *http.Request, parts []st
 			fail(w, 404, "邮件不存在")
 			return
 		}
-		if !e.Seen {
+		if !s.cm.Get().IsEffectivelySeen(e) {
 			s.st.Update(id, func(em *Email) { em.Seen = true })
 			if mb, exists := s.cm.Mailbox(e.MailboxID); exists && !mb.Demo {
 				seen := true
@@ -688,13 +689,14 @@ func (s *Server) listEmails(w http.ResponseWriter, r *http.Request) {
 	cfgNow := s.cm.Get()
 	out := make([]EmailSummary, 0, len(source))
 	for _, e := range source {
-		if filter == "unread" && e.Seen {
+		isAd := cfgNow.IsAdLabel(e)
+		if filter == "unread" && cfgNow.IsEffectivelySeen(e) {
 			continue
 		}
-		if filter == "important" && (e.Importance != "high" || e.Handled) {
+		if filter == "important" && (isAd || e.Importance != "high" || e.Handled) {
 			continue
 		}
-		if filter == "action" && !e.EffectiveNeedAction() {
+		if filter == "action" && (isAd || !e.EffectiveNeedAction()) {
 			continue
 		}
 		if filter == "ads" && !cfgNow.CountsAsAd(e) {
@@ -707,7 +709,9 @@ func (s *Server) listEmails(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		sum := e.ToSummary()
-		sum.IsAd = cfgNow.IsAdLabel(e)
+		sum.Seen = cfgNow.IsEffectivelySeen(e)
+		sum.IsAd = isAd
+		sum.AdIgnored = cfgNow.IsAdIgnored(e)
 		out = append(out, sum)
 		if len(out) >= limit {
 			break
@@ -741,6 +745,7 @@ func (s *Server) setEmailFlags(w http.ResponseWriter, r *http.Request, id string
 			em.Handled = *in.Handled
 		}
 		if in.AdIgnored != nil {
+			em.AdIgnoredSet = true
 			em.AdIgnored = *in.AdIgnored
 		}
 		if in.AdOverride != nil {
@@ -779,7 +784,10 @@ func (s *Server) emailView(id string) *Email {
 		}
 	}
 	e.NeedAction = e.EffectiveNeedAction()
-	e.IsAd = s.cm.Get().IsAdLabel(e)
+	cfg := s.cm.Get()
+	e.IsAd = cfg.IsAdLabel(e)
+	e.Seen = cfg.IsEffectivelySeen(e)
+	e.AdIgnored = cfg.IsAdIgnored(e)
 	return e
 }
 
@@ -806,7 +814,10 @@ func (s *Server) ignoreAds(w http.ResponseWriter, r *http.Request) {
 		if s.st.Get(id) == nil {
 			continue
 		}
-		s.st.Update(id, func(e *Email) { e.AdIgnored = ignore })
+		s.st.Update(id, func(e *Email) {
+			e.AdIgnoredSet = true
+			e.AdIgnored = ignore
+		})
 		updated++
 	}
 	ok(w, map[string]int{"updated": updated})

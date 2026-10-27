@@ -32,7 +32,6 @@ const cards = computed(() => ([
   { key: 'unread', label: '未读邮件', value: stats.value.unread, hint: `共 ${stats.value.total} 封`, icon: 'mail' },
   { key: 'important', label: '重要邮件', value: stats.value.high, hint: 'AI 判定优先处理', icon: 'alert' },
   { key: 'action', label: '需要处理', value: stats.value.need_action, hint: '需要回复或操作', icon: 'check' },
-  { key: 'ads', label: '广告推广', value: stats.value.ads, hint: '可批量忽略', icon: 'tag' },
 ]))
 
 const todos = computed(() => state.emails
@@ -84,9 +83,9 @@ function mbColor(id) { return state.mailboxes.find((m) => m.id === id)?.color ||
     <div class="stat-grid">
       <button
         v-for="c in cards" :key="c.key" class="stat-card" :class="c.key"
-        @click="openMailbox('all', c.key === 'unread' ? 'unread' : c.key === 'important' ? 'important' : c.key === 'action' ? 'action' : 'ads')"
+        @click="openMailbox('all', c.key)"
       >
-        <div class="accent-bar" :style="{ background: c.key === 'important' ? 'var(--red)' : c.key === 'action' ? 'var(--accent)' : c.key === 'unread' ? 'var(--ink)' : 'var(--line-strong)' }"></div>
+        <div class="accent-bar" :style="{ background: c.key === 'important' ? 'var(--red)' : c.key === 'action' ? 'var(--accent)' : 'var(--ink)' }"></div>
         <div class="k"><Icon :name="c.icon" :size="13" /> {{ c.label }}</div>
         <div class="v">{{ c.value }}</div>
         <div class="stat-hint">{{ c.hint }}</div>

@@ -120,7 +120,7 @@ async function runIgnoreAll() {
         </button>
       </div>
       <div v-if="state.filter === 'ads' && state.emails.length" class="ads-bar">
-        <span>AI 判定为广告，忽略后仍可在全部邮件中找回</span>
+        <span>这些广告已取消默认忽略；重新忽略后仍可在全部邮件中找回</span>
         <button class="btn btn-sm" @click="askIgnoreAll">
           <Icon name="eyeOff" :size="12" />
           {{ confirmIgnore ? `确认忽略 ${state.emails.length} 封` : '全部忽略' }}
@@ -143,7 +143,7 @@ async function runIgnoreAll() {
         <h3>{{ state.q ? '没有找到相关邮件' : state.filter === 'ads' ? '没有广告邮件' : '这里还很安静' }}</h3>
         <p>
           {{ state.q ? '试试更短的关键词，或切换邮箱与筛选条件。'
-            : state.filter === 'ads' ? '被 AI 判为广告的邮件会出现在这里。已在「广告白名单」中的发件人不会计入广告，可在设置里调整。'
+            : state.filter === 'ads' ? '广告默认已忽略，不计入未读。需要查看时，可在全部邮件中取消忽略。'
             : state.mailboxes.length ? '同步后新的邮件会出现在这里。也可以先调整筛选条件。' : '先到设置里添加一个邮箱，开始接收邮件。' }}
         </p>
         <button v-if="!state.q && !state.mailboxes.length" class="btn btn-sm" @click="state.settingsTab = 'mailboxes'; state.view = 'settings'">添加邮箱</button>

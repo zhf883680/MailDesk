@@ -400,10 +400,20 @@ func (cfg *Config) IsAdLabel(e *Email) bool {
 	return e != nil && e.EffectiveIsAd() && !cfg.IsAdWhitelisted(e)
 }
 
+// IsAdIgnored 判断广告是否应被忽略。未做显式选择的广告默认忽略。
+func (cfg *Config) IsAdIgnored(e *Email) bool {
+	return cfg.IsAdLabel(e) && e.EffectiveAdIgnored()
+}
+
+// IsEffectivelySeen 将广告视为已读，避免未读数和未读列表被推广邮件干扰。
+func (cfg *Config) IsEffectivelySeen(e *Email) bool {
+	return e != nil && (e.Seen || cfg.IsAdLabel(e))
+}
+
 // CountsAsAd 判断邮件是否应计入广告统计与「广告」列表。
-// 已忽略的广告仍保留广告标记，但不再计入统计和广告列表。
+// 广告默认忽略；用户明确取消忽略后才计入广告统计与「广告」列表。
 func (cfg *Config) CountsAsAd(e *Email) bool {
-	return cfg.IsAdLabel(e) && !e.AdIgnored
+	return cfg.IsAdLabel(e) && !cfg.IsAdIgnored(e)
 }
 
 func sortMailboxes(list []Mailbox) {

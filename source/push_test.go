@@ -202,6 +202,41 @@ func TestPushServiceSendsNewEmailOnlyOnce(t *testing.T) {
 	}
 }
 
+func TestNotifyEmailSkipsAds(t *testing.T) {
+	dir := t.TempDir()
+	cm, err := newConfigManager(dir)
+	if err != nil {
+		t.Fatalf("newConfigManager: %v", err)
+	}
+	st, err := newStore(filepath.Join(dir, "emails"))
+	if err != nil {
+		t.Fatalf("newStore: %v", err)
+	}
+	email := sampleMail()
+	email.UID = 3
+	email.ID = makeID(email.MailboxID, email.UID)
+	email.IsAd = true
+	st.Upsert(email)
+
+	var sends int
+	service, err := newPushServiceWithSender(cm, st, func(payload []byte, sub PushSubscription) (int, error) {
+		sends++
+		return 201, nil
+	})
+	if err != nil {
+		t.Fatalf("newPushService: %v", err)
+	}
+	if err := service.Subscribe(validPushSubscription(t)); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	if err := service.NotifyEmail(email.ID); err != nil {
+		t.Fatalf("NotifyEmail: %v", err)
+	}
+	if sends != 0 {
+		t.Fatalf("send count = %d, want 0 for an ad", sends)
+	}
+}
+
 func TestPushLogsHideSubscriptionSecret(t *testing.T) {
 	dir := t.TempDir()
 	cm, err := newConfigManager(dir)
