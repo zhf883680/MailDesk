@@ -967,7 +967,7 @@ const vTrans = '{{translation}}'
             <h3>通知规则</h3>
             <p class="desc">通知与「关键词转发」相互独立，可以同时开启。</p>
             <div style="display: grid; gap: 10px; font-size: 12.5px; line-height: 1.7; color: var(--ink-2)">
-              <div>· 默认通知每封新邮件，标题优先使用中文主题，正文显示发件人与摘要。</div>
+              <div>· 默认通知每封新邮件，标题优先使用中文主题，正文只显示 AI 一句话摘要。</div>
               <div>· 首次添加邮箱时同步到的历史邮件不会通知。</div>
               <div>· MailDesk 正显示在前台时静默，避免重复打扰；点击系统通知会直接打开对应邮件。</div>
               <div>· 同一封邮件只推送一次；失效的浏览器订阅会自动清理。</div>

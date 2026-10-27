@@ -34,6 +34,7 @@ async function submit() {
   }
   loading.value = true
   err.value = ''
+  inputRef.value?.blur()
   try {
     await login(key.value.trim())
   } catch (e) {

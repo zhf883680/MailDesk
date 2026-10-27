@@ -202,7 +202,7 @@ func (s *Store) saveNow(mb string) {
 	s.mu.RLock()
 	emails := make([]*Email, 0, len(s.data[mb]))
 	for _, e := range s.data[mb] {
-		emails = append(emails, e)
+		emails = append(emails, cloneEmail(e))
 	}
 	s.mu.RUnlock()
 	sort.Slice(emails, func(i, j int) bool { return emails[i].Date.After(emails[j].Date) })
@@ -243,18 +243,13 @@ func (s *Store) Get(id string) *Email {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if m, ok := s.data[mb]; ok {
-		return m[uid]
+		return cloneEmail(m[uid])
 	}
 	return nil
 }
 
 func (s *Store) Copy(id string) *Email {
-	e := s.Get(id)
-	if e == nil {
-		return nil
-	}
-	cp := *e
-	return &cp
+	return s.Get(id)
 }
 
 func (s *Store) MailboxEmails(mb string) []*Email {
@@ -262,7 +257,7 @@ func (s *Store) MailboxEmails(mb string) []*Email {
 	defer s.mu.RUnlock()
 	out := make([]*Email, 0, len(s.data[mb]))
 	for _, e := range s.data[mb] {
-		out = append(out, e)
+		out = append(out, cloneEmail(e))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Date.After(out[j].Date) })
 	return out
@@ -274,11 +269,23 @@ func (s *Store) All() []*Email {
 	var out []*Email
 	for _, m := range s.data {
 		for _, e := range m {
-			out = append(out, e)
+			out = append(out, cloneEmail(e))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Date.After(out[j].Date) })
 	return out
+}
+
+func cloneEmail(e *Email) *Email {
+	if e == nil {
+		return nil
+	}
+	cp := *e
+	cp.To = append([]Addr(nil), e.To...)
+	cp.CC = append([]Addr(nil), e.CC...)
+	cp.RuleResults = append([]RuleResult(nil), e.RuleResults...)
+	cp.ForwardLog = append([]ForwardLog(nil), e.ForwardLog...)
+	return &cp
 }
 
 func (s *Store) Upsert(e *Email) {

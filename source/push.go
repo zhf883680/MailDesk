@@ -20,6 +20,7 @@ import (
 const (
 	maxPushSubscriptions = 20
 	pushTTLSeconds       = 24 * 60 * 60
+	aiPushWait           = 5 * time.Minute
 	vapidSubscriber      = "https://github.com/zhf883680/MailDesk"
 )
 
@@ -148,12 +149,14 @@ func (p *PushService) Start() {
 		return
 	}
 	p.logf("[push] 后台发送队列已启动")
-	go func() {
-		for id := range p.queue {
-			_ = p.NotifyEmail(id)
-			p.inflight.Delete(id)
-		}
-	}()
+	for i := 0; i < 3; i++ {
+		go func() {
+			for id := range p.queue {
+				_ = p.NotifyEmail(id)
+				p.inflight.Delete(id)
+			}
+		}()
+	}
 }
 
 func (p *PushService) Enqueue(emailID string) {
@@ -251,6 +254,15 @@ func (p *PushService) NotifyEmail(emailID string) error {
 	email := p.st.Copy(emailID)
 	if email == nil {
 		p.logf("[push] 跳过通知：邮件不存在 id=%s", emailID)
+		return nil
+	}
+	if email.Notified {
+		p.logf("[push] 跳过通知：邮件已发送过 id=%s", emailID)
+		return nil
+	}
+	email = p.waitForAIInterpretation(emailID)
+	if email == nil {
+		p.logf("[push] 跳过通知：等待 AI 解读期间邮件已不存在 id=%s", emailID)
 		return nil
 	}
 	if email.Notified {
@@ -361,14 +373,10 @@ func (p *PushService) removeSubscriptions(endpoints []string) error {
 
 func buildPushPayload(email *Email) []byte {
 	subject := firstNonEmpty(email.SubjectZh, email.Subject, "新邮件")
-	from := firstNonEmpty(email.FromName, email.FromAddr, "未知发件人")
-	body := from
-	if email.Snippet != "" {
-		body += "\n" + truncate(email.Snippet, 180)
-	}
+	body := firstNonEmpty(strings.TrimSpace(email.Summary), email.Snippet, subject)
 	message := pushMessage{
 		Title: truncate(subject, 120),
-		Body:  truncate(body, 360),
+		Body:  truncate(body, 240),
 		URL:   "/?email=" + url.QueryEscape(email.ID),
 		Tag:   "maildesk-" + email.ID,
 		Icon:  "/icon-192.png",
@@ -376,6 +384,27 @@ func buildPushPayload(email *Email) []byte {
 	}
 	payload, _ := json.Marshal(message)
 	return payload
+}
+
+// waitForAIInterpretation 等邮件完成 AI 摘要后再生成通知，避免把原始片段推送到手机。
+func (p *PushService) waitForAIInterpretation(emailID string) *Email {
+	deadline := time.Now().Add(aiPushWait)
+	for {
+		email := p.st.Copy(emailID)
+		if email == nil {
+			return nil
+		}
+		aiSettled := email.AIStatus != "pending" && email.AIStatus != "running"
+		summaryReady := strings.TrimSpace(email.Summary) != ""
+		if !p.cm.Get().AI.Enabled || aiSettled || summaryReady {
+			return email
+		}
+		if time.Now().After(deadline) {
+			p.logf("[push] AI 解读等待超时，使用当前内容发送 id=%s", emailID)
+			return email
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 }
 
 func validatePushSubscription(sub PushSubscription) error {

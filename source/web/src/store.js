@@ -89,6 +89,8 @@ export async function login(key) {
   state.selectedId = null
   state.selected = null
   state.view = 'dashboard'
+  state.mobilePane = 'list'
+  state.sidebarOpen = false
 }
 
 export async function logout() {
@@ -236,6 +238,9 @@ export async function setHandled(handled) {
     item.need_action = e.need_action
   }
   await reloadStats()
+  if (state.filter === 'important' || state.filter === 'action') {
+    await loadEmails()
+  }
   toast(handled ? '已标记为处理完成' : '已恢复为待处理')
 }
 

@@ -14,6 +14,7 @@ const confirmDelete = ref(false)
 
 const mail = computed(() => state.selected)
 const hasTrans = computed(() => !!(mail.value && (mail.value.translated_md || mail.value.translated_html || mail.value.translated)))
+const needsFormatUpgrade = computed(() => !!(mail.value?.html && mail.value?.translated && !mail.value?.translated_html))
 const mailbox = computed(() => state.mailboxes.find((m) => m.id === mail.value?.mailbox_id))
 const senderAvatarView = computed(() => senderAvatar(mail.value?.from_name, mail.value?.from_addr))
 
@@ -30,7 +31,7 @@ function chooseView(v) {
 }
 
 async function showTranslated() {
-  if (hasTrans.value || translating.value || !mail.value) return
+  if ((hasTrans.value && !needsFormatUpgrade.value) || translating.value || !mail.value) return
   translating.value = true
   try {
     const e = await api.translate(mail.value.id)
@@ -116,7 +117,6 @@ function toList() {
           <Icon name="star" :size="17" :filled="mail.flagged" />
         </button>
         <button
-          v-if="mail.need_action || mail.handled"
           class="icon-btn" :class="{ active: mail.handled }"
           :title="mail.handled ? '撤销已处理' : '标记为已处理'"
           @click="setHandled(!mail.handled)"
@@ -224,6 +224,13 @@ function toList() {
             <span v-if="mail.ad_ignored" class="badge badge-muted">已忽略</span>
             <span v-if="mail.category" class="badge badge-low">{{ mail.category }}</span>
             <span v-if="hasTrans" class="badge badge-ai"><Icon name="languages" :size="10" /> 已译成中文</span>
+            <button
+              v-if="!mail.handled && (mail.importance === 'high' || mail.need_action)"
+              class="btn btn-sm handled-action"
+              @click="setHandled(true)"
+            >
+              <Icon name="check" :size="13" /> 标记已处理
+            </button>
           </div>
         </template>
       </div>
@@ -266,8 +273,17 @@ function toList() {
 
         <div v-if="translating" class="html-translating">
           <Icon name="refresh" :size="15" class="spin" />
-          正在提取网页文字并翻译…
+          正在保留原格式翻译…
         </div>
+
+        <!-- 译文：保留邮件原有 HTML 版式 -->
+        <iframe
+          v-else-if="bodyView === 'zh' && mail.translated_html"
+          class="html-frame translated"
+          :srcdoc="mail.translated_html"
+          sandbox="allow-popups allow-popups-to-escape-sandbox"
+          referrerpolicy="no-referrer"
+        ></iframe>
 
         <!-- 网页原文：原版 HTML 渲染 -->
         <iframe
@@ -278,8 +294,12 @@ function toList() {
           referrerpolicy="no-referrer"
         ></iframe>
 
-        <!-- 纯文本译文：保留 AI 输出中的段落换行，不渲染 Markdown -->
+        <!-- 纯文本邮件的译文 -->
         <div v-else class="mail-plain">
+          <div v-if="needsFormatUpgrade" class="translation-upgrade">
+            <span><Icon name="alert" :size="13" /> 这是旧版纯文本译文，重新翻译可恢复邮件原有版式。</span>
+            <button class="btn btn-sm" @click="showTranslated">重译并恢复格式</button>
+          </div>
           <div v-if="mail.translated" class="mail-body translated">{{ mail.translated }}</div>
           <div v-else class="md-empty">
             <Icon name="languages" :size="16" />

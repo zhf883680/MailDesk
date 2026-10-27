@@ -277,7 +277,7 @@ func (s *Server) stats() Stats {
 			ms.Unread++
 			st.Unread++
 		}
-		if e.Importance == "high" {
+		if e.Importance == "high" && !e.Handled {
 			ms.High++
 			st.High++
 		}
@@ -691,7 +691,7 @@ func (s *Server) listEmails(w http.ResponseWriter, r *http.Request) {
 		if filter == "unread" && e.Seen {
 			continue
 		}
-		if filter == "important" && e.Importance != "high" {
+		if filter == "important" && (e.Importance != "high" || e.Handled) {
 			continue
 		}
 		if filter == "action" && !e.EffectiveNeedAction() {

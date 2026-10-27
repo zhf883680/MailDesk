@@ -11,7 +11,9 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func validPushSubscription(t *testing.T) PushSubscription {
@@ -54,6 +56,7 @@ func TestValidatePushSubscription(t *testing.T) {
 
 func TestBuildPushPayload(t *testing.T) {
 	email := sampleMail()
+	email.Summary = "登录验证码 482913，10 分钟内有效，请尽快完成验证。"
 	payload := buildPushPayload(email)
 	var message pushMessage
 	if err := json.Unmarshal(payload, &message); err != nil {
@@ -62,14 +65,92 @@ func TestBuildPushPayload(t *testing.T) {
 	if message.Title != "Stripe 验证码" {
 		t.Errorf("title = %q", message.Title)
 	}
-	if !strings.Contains(message.Body, "Stripe") || !strings.Contains(message.Body, "482913") {
+	if message.Body != email.Summary {
 		t.Errorf("body = %q", message.Body)
+	}
+	if strings.Contains(message.Body, email.FromName) || strings.Contains(message.Body, "\n") {
+		t.Errorf("body should contain only the concise AI summary: %q", message.Body)
 	}
 	if !strings.Contains(message.URL, "email=") || !strings.Contains(message.URL, "mb%3A1") {
 		t.Errorf("url = %q", message.URL)
 	}
 	if message.Tag != "maildesk-mb:1" {
 		t.Errorf("tag = %q", message.Tag)
+	}
+}
+
+func TestNotifyEmailWaitsForAIInterpretation(t *testing.T) {
+	dir := t.TempDir()
+	cm, err := newConfigManager(dir)
+	if err != nil {
+		t.Fatalf("newConfigManager: %v", err)
+	}
+	if err := cm.Update(func(c *Config) error {
+		c.AI.Enabled = true
+		c.AI.APIKey = "test-key"
+		return nil
+	}); err != nil {
+		t.Fatalf("configure AI: %v", err)
+	}
+	st, err := newStore(filepath.Join(dir, "emails"))
+	if err != nil {
+		t.Fatalf("newStore: %v", err)
+	}
+	email := sampleMail()
+	email.UID = 2
+	email.ID = makeID(email.MailboxID, email.UID)
+	email.AIStatus = "running"
+	st.Upsert(email)
+
+	sent := make(chan pushMessage, 1)
+	service, err := newPushServiceWithSender(cm, st, func(payload []byte, sub PushSubscription) (int, error) {
+		var message pushMessage
+		if err := json.Unmarshal(payload, &message); err != nil {
+			return 0, err
+		}
+		sent <- message
+		return 201, nil
+	})
+	if err != nil {
+		t.Fatalf("newPushService: %v", err)
+	}
+	if err := service.Subscribe(validPushSubscription(t)); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	var sends atomic.Int32
+	done := make(chan error, 1)
+	go func() {
+		sends.Add(1)
+		done <- service.NotifyEmail(email.ID)
+	}()
+	select {
+	case message := <-sent:
+		t.Fatalf("notification sent before AI completed: %#v", message)
+	case <-time.After(250 * time.Millisecond):
+	}
+
+	st.Update(email.ID, func(e *Email) {
+		e.Summary = "验证码即将过期，请立即完成登录。"
+	})
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("NotifyEmail: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("NotifyEmail did not resume after AI completed")
+	}
+	select {
+	case message := <-sent:
+		if message.Body != "验证码即将过期，请立即完成登录。" {
+			t.Fatalf("notification body = %q", message.Body)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("notification was not sent after AI completed")
+	}
+	if got := sends.Load(); got != 1 {
+		t.Fatalf("NotifyEmail calls = %d, want 1", got)
 	}
 }
 

@@ -25,6 +25,8 @@ RUN apk add --no-cache ca-certificates tzdata \
     && mkdir -p /data \
     && chown -R maildesk:maildesk /data
 
+ENV TZ=Asia/Shanghai
+
 COPY --from=server-build /out/maildesk /usr/local/bin/maildesk
 
 WORKDIR /app

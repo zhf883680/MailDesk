@@ -184,6 +184,13 @@ const plainTranslateSystem = `你是一名专业的邮件翻译。用户会给�
 3. 不要添加任何解释、注释、标题或 Markdown 代码块包裹；
 4. 直接返回纯文本译文。`
 
+const htmlTranslateSystem = `你是一名专业的邮件网页翻译。用户会给你一封 HTML 格式的英文邮件，请把其中的可见文字翻译成简体中文，并原样返回完整 HTML。
+严格要求：
+1. 必须输出完整 HTML，保留所有标签、属性、内联样式、表格结构、间距与图片，不得删除或改写标签；
+2. 只翻译标签之间的可见文字（包括 title、alt、placeholder 等面向用户的文字），标签名、属性名、URL、颜色值、CSS 一律不改；
+3. 人名、公司名、产品名可保留英文；链接地址绝不翻译；
+4. 不要添加任何解释、注释、markdown 代码块标记或前后缀，直接返回 HTML。`
+
 const classifySystem = `你是邮件智能助理。请分析用户给出的邮件，并只输出一个 JSON 对象，不要包含 markdown 代码块或任何解释。
 JSON 字段：
 - "summary": 一句话中文摘要，不超过 40 字，说明这封邮件要做什么
@@ -346,8 +353,31 @@ func translationSource(email *Email) string {
 	return normalizeText(email.Text)
 }
 
-// translateNow 把 HTML 中提取的可见文字翻译成纯文本。
+// translateNow 优先保留 HTML 结构翻译；纯文本邮件仍使用纯文本翻译。
 func (a *AIService) translateNow(email *Email, cfg AIConfig) error {
+	if html := strings.TrimSpace(email.HTML); html != "" {
+		user := fmt.Sprintf("邮件主题：%s\n\n%s", email.Subject, truncate(html, 100000))
+		out, err := a.chat(cfg, htmlTranslateSystem, user, 0.2)
+		if err != nil {
+			return err
+		}
+		out = sanitizeHTML(stripFences(out))
+		text := htmlToText(out)
+		if !strings.Contains(out, "<") || text == "" {
+			return errors.New("AI 未返回可用的 HTML 译文")
+		}
+		subZh := a.translateSubject(cfg, email.Subject)
+		a.st.Update(email.ID, func(e *Email) {
+			if subZh != "" {
+				e.SubjectZh = subZh
+			}
+			e.Translated = truncate(text, 60000)
+			e.TranslatedHTML = truncate(out, 100000)
+			e.TranslatedMD = ""
+		})
+		return nil
+	}
+
 	body := translationSource(email)
 	if body == "" {
 		return errors.New("邮件没有可翻译的正文")
@@ -380,7 +410,9 @@ func (a *AIService) TranslateEmail(id string) (*Email, error) {
 	if email == nil {
 		return nil, errors.New("邮件不存在")
 	}
-	if email.TranslatedMD != "" || email.TranslatedHTML != "" || email.Translated != "" {
+	hasTranslation := email.TranslatedMD != "" || email.TranslatedHTML != "" || email.Translated != ""
+	needsHTMLUpgrade := strings.TrimSpace(email.HTML) != "" && email.TranslatedHTML == ""
+	if hasTranslation && !needsHTMLUpgrade {
 		return a.st.Get(id), nil
 	}
 	if _, loaded := translating.LoadOrStore(id, true); loaded {

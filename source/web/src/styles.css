@@ -336,6 +336,7 @@ a { color: var(--accent); text-decoration: none; }
 .ai-summary { font-size: 13.5px; line-height: 1.75; color: var(--ink-2); }
 .ai-meta { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
 .ai-meta .label { font-size: 11.5px; color: var(--muted); }
+.ai-meta .handled-action { margin-left: auto; height: 28px; padding: 0 10px; font-size: 11.5px; }
 .ai-wait { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
 .ai-error { font-size: 12.5px; color: var(--red); display: flex; align-items: flex-start; gap: 7px; line-height: 1.6; }
 
@@ -419,11 +420,19 @@ a { color: var(--accent); text-decoration: none; }
 .mail-body { font-size: 14px; line-height: 1.9; color: #2b2822; white-space: pre-wrap; word-break: break-word; }
 .mail-body.translated { font-size: 14.5px; }
 .trans-note { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--accent-ink); background: var(--accent-soft); height: 20px; padding: 0 7px; border-radius: 5px; margin-bottom: 10px; }
+.translation-upgrade {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 14px; padding: 9px 11px; border-radius: 9px;
+  background: var(--amber-soft); color: var(--amber); font-size: 11.5px; line-height: 1.6;
+}
+.translation-upgrade span { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 210px; }
+.translation-upgrade .btn { flex: 0 0 auto; }
 .original-block { margin-top: 26px; border-top: 1px dashed var(--line-strong); padding-top: 16px; }
 .original-toggle { display: flex; align-items: center; gap: 7px; font-size: 11.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
 .original-toggle:hover { color: var(--ink-2); }
 .original-body { font-size: 13px; line-height: 1.85; color: #6a6459; white-space: pre-wrap; word-break: break-word; }
 .html-frame { width: 100%; min-height: 420px; height: 640px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.html-frame.translated { min-height: 480px; }
 .mail-md { font-size: 14px; line-height: 1.85; color: #2b2822; }
 .mail-md h1, .mail-md h2 { font-size: 18px; }
 .mail-md h3 { font-size: 16px; }
@@ -636,7 +645,8 @@ a { color: var(--accent); text-decoration: none; }
   .m-topbar {
     display: flex; align-items: center; gap: 4px;
     position: sticky; top: 0; z-index: 18;
-    padding: 8px 12px; height: 58px;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+    min-height: calc(58px + env(safe-area-inset-top));
     background: rgba(248, 244, 236, 0.94);
     backdrop-filter: blur(14px) saturate(1.2);
     border-bottom: 1px solid var(--line);
@@ -645,14 +655,19 @@ a { color: var(--accent); text-decoration: none; }
   .m-topbar .grow { flex: 1; }
 
   /* 列表头部吸顶 */
-  .list-head { position: sticky; top: 0; z-index: 16; background: rgba(250, 247, 240, 0.95); backdrop-filter: blur(12px); }
+  .list-head {
+    position: sticky; top: 0; z-index: 16;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    background: rgba(250, 247, 240, 0.95); backdrop-filter: blur(12px);
+  }
   .mail-scroll { padding-bottom: 92px; }
   .page { padding-bottom: 96px; }
 
   /* 阅读页顶部操作条吸顶 */
   .reader-top {
     position: sticky; top: 0; z-index: 16;
-    margin: -8px -18px 14px; padding: 6px 10px;
+    margin: -8px -18px 14px;
+    padding: calc(6px + env(safe-area-inset-top)) 10px 6px;
     background: rgba(255, 253, 248, 0.95); backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--line);
   }
@@ -692,7 +707,7 @@ a { color: var(--accent); text-decoration: none; }
   .mb-grid { grid-template-columns: 1fr; }
 
   /* 列表行：字号提升、次要徽标收起 */
-  .list-head { padding: 12px 14px 10px; }
+  .list-head { padding: calc(12px + env(safe-area-inset-top)) 14px 10px; }
   .list-title { margin-bottom: 11px; justify-content: flex-start; }
   .list-title .icon-btn:last-child { margin-left: auto; }
   .list-title h2 { font-size: 19px; gap: 7px; }
@@ -715,7 +730,10 @@ a { color: var(--accent); text-decoration: none; }
 
   /* 阅读页 */
   .reader-inner { padding: 14px 16px 90px; }
-  .reader-top { margin: -6px -16px 12px; padding: 6px 8px; }
+  .reader-top {
+    margin: -6px -16px 12px;
+    padding: calc(6px + env(safe-area-inset-top)) 8px 6px;
+  }
   .reader-subject { font-size: 20px; line-height: 1.4; }
   .reader-subject-zh { font-size: 12.5px; }
   .sender-row { gap: 12px; flex-wrap: wrap; }
