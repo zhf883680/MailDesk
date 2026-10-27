@@ -361,7 +361,7 @@ func (a *AIService) translateNow(email *Email, cfg AIConfig) error {
 		if err != nil {
 			return err
 		}
-		out = sanitizeHTML(stripFences(out))
+		out = cleanTranslatedHTML(out)
 		text := htmlToText(out)
 		if !strings.Contains(out, "<") || text == "" {
 			return errors.New("AI 未返回可用的 HTML 译文")
@@ -445,6 +445,48 @@ func stripFences(s string) string {
 		}
 	}
 	return strings.TrimSpace(s)
+}
+
+// extractHTMLResponse 从模型回复中只截取 HTML，兼容说明文字、代码围栏和缺失结尾围栏。
+func extractHTMLResponse(s string) string {
+	s = strings.TrimSpace(s)
+	lower := strings.ToLower(s)
+	if fence := strings.Index(lower, "```"); fence >= 0 {
+		s = s[fence+3:]
+		if newline := strings.IndexAny(s, "\r\n"); newline >= 0 {
+			s = s[newline+1:]
+		}
+		if end := strings.Index(s, "```"); end >= 0 {
+			s = s[:end]
+		}
+	}
+	if start := firstHTMLTagIndex(s); start > 0 {
+		s = s[start:]
+	}
+	return strings.TrimSpace(s)
+}
+
+func firstHTMLTagIndex(s string) int {
+	lower := strings.ToLower(s)
+	first := -1
+	for _, marker := range []string{
+		"<!doctype", "<!--", "<html", "<head", "<body", "<table", "<div", "<p",
+		"<span", "<center", "<style", "<section", "<article", "<main", "<img",
+		"<meta", "<link", "<br",
+	} {
+		if i := strings.Index(lower, marker); i >= 0 && (first < 0 || i < first) {
+			first = i
+		}
+	}
+	return first
+}
+
+func cleanTranslatedHTML(s string) string {
+	s = extractHTMLResponse(s)
+	if s == "" {
+		return ""
+	}
+	return sanitizeHTML(s)
 }
 
 func extractJSON(s string) string {

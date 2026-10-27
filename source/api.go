@@ -772,6 +772,12 @@ func (s *Server) emailView(id string) *Email {
 	if e == nil {
 		return nil
 	}
+	if e.TranslatedHTML != "" {
+		e.TranslatedHTML = cleanTranslatedHTML(e.TranslatedHTML)
+		if text := htmlToText(e.TranslatedHTML); text != "" {
+			e.Translated = truncate(text, 60000)
+		}
+	}
 	e.NeedAction = e.EffectiveNeedAction()
 	e.IsAd = s.cm.Get().IsAdLabel(e)
 	return e

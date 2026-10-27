@@ -39,7 +39,19 @@ func TestTranslateNowPreservesHTMLFormatting(t *testing.T) {
 		if strings.Contains(req.Messages[0].Content, "HTML") {
 			bodyPrompt = req.Messages[1].Content
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"<table><tr><td>项目</td><td>金额</td></tr><tr><td>订单</td><td><strong>已就绪</strong></td></tr></table><p>你好 <strong>Alex</strong>。</p>"}}]}`))
+			_ = json.NewEncoder(w).Encode(chatResponse{
+				Choices: []struct {
+					Message struct {
+						Content string `json:"content"`
+					} `json:"message"`
+				}{{
+					Message: struct {
+						Content string `json:"content"`
+					}{
+						Content: "这是保留原有版式的 HTML 译文。\n```html\n<table><tr><td>项目</td><td>金额</td></tr><tr><td>订单</td><td><strong>已就绪</strong></td></tr></table><p>你好 <strong>Alex</strong>。</p>\n```",
+					},
+				}},
+			})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -91,6 +103,9 @@ func TestTranslateNowPreservesHTMLFormatting(t *testing.T) {
 	updated := st.Get(email.ID)
 	if updated == nil || !strings.Contains(updated.TranslatedHTML, `<table>`) || !strings.Contains(updated.TranslatedHTML, `<strong>Alex</strong>`) {
 		t.Fatalf("formatted translation not stored: %#v", updated)
+	}
+	if strings.Contains(updated.TranslatedHTML, "这是保留原有版式") || strings.Contains(updated.TranslatedHTML, "```") {
+		t.Fatalf("explanatory text or code fence leaked into stored HTML: %q", updated.TranslatedHTML)
 	}
 	if updated.Translated == "" || updated.SubjectZh != "订单更新" {
 		t.Fatalf("derived text or translated subject missing: %#v", updated)
@@ -154,5 +169,28 @@ func TestTranslateEmailUpgradesLegacyPlainTranslation(t *testing.T) {
 	}
 	if updated == nil || !strings.Contains(updated.TranslatedHTML, `<strong>格式</strong>`) {
 		t.Fatalf("legacy translation was not upgraded: %#v", updated)
+	}
+}
+
+func TestEmailViewCleansCachedFencedTranslation(t *testing.T) {
+	s, st := testEmailServer(t)
+	st.Upsert(&Email{
+		ID:             "mb:3",
+		MailboxID:      "mb",
+		UID:            3,
+		HTML:           `<p>Original</p>`,
+		Translated:     "原文",
+		TranslatedHTML: "这是译文说明。\n```html\n<p>格式化译文</p>\n```",
+	})
+
+	view := s.emailView("mb:3")
+	if view == nil {
+		t.Fatal("emailView returned nil")
+	}
+	if strings.Contains(view.TranslatedHTML, "这是译文说明") || strings.Contains(view.TranslatedHTML, "```") {
+		t.Fatalf("cached translation still contains explanatory text or fences: %q", view.TranslatedHTML)
+	}
+	if !strings.Contains(view.TranslatedHTML, `<p>格式化译文</p>`) {
+		t.Fatalf("cached HTML translation was not preserved: %q", view.TranslatedHTML)
 	}
 }
