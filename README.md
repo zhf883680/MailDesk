@@ -352,7 +352,7 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o m
 
 | 触发方式 | 行为 |
 | --- | --- |
-| 推送到 `main` / `master` | 构建 5 个平台的压缩包，发布或更新 `v<当前版本>` Release（版本号取自 `source/main.go` 的 `appVersion`），已存在的同名文件会被覆盖 |
+| 推送到 `main` / `master` | 构建 5 个平台的压缩包，发布或更新 `v<当前版本>` Release（版本号取自 `source/main.go` 的 `appVersion`）；Release 说明自动生成本版本提交列表与 Full Changelog |
 | 推送 `v*` 标签 | 构建并发布同名 Release，例如 `git tag v1.3.4 && git push origin v1.3.4` |
 | 手动运行 workflow | 按所选分支执行同样的构建与发布 |
 
@@ -399,4 +399,4 @@ web/        Vue 3 前端
 
 ---
 
-版本 1.4.4 · 单机自部署 · 数据不出本机
+版本 1.4.5 · 单机自部署 · 数据不出本机

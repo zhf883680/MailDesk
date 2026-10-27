@@ -123,6 +123,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download packaged binaries
         uses: actions/download-artifact@v4
@@ -151,17 +153,54 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "name=MailDesk ${tag}" >> "$GITHUB_OUTPUT"
 
+      - name: Generate release notes
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          repository_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          owner="${GITHUB_REPOSITORY%%/*}"
+          previous_tag=$(
+            git describe --tags --abbrev=0 --match 'v[0-9]*' "${GITHUB_SHA}^" 2>/dev/null || true
+          )
+
+          {
+            echo "## What's Changed"
+            echo
+            if [ -n "$previous_tag" ]; then
+              git log --reverse \
+                --pretty=format:"- %s ([%h](${repository_url}/commit/%H)) by @${owner}" \
+                "${previous_tag}..${GITHUB_SHA}"
+            else
+              git log --reverse \
+                --pretty=format:"- %s ([%h](${repository_url}/commit/%H)) by @${owner}" \
+                "${GITHUB_SHA}"
+            fi
+            echo
+            echo
+            echo "## Full Changelog"
+            echo
+            if [ -n "$previous_tag" ]; then
+              echo "${repository_url}/compare/${previous_tag}...${TAG}"
+            else
+              echo "${repository_url}/commits/${TAG}"
+            fi
+            echo
+            echo "## Release Assets"
+            echo
+            echo "- Linux / macOS：\`.tar.gz\`"
+            echo "- Windows：\`.zip\`"
+            echo "- 校验文件：\`SHA256SUMS.txt\`"
+          } > release-body.md
+
+          cat release-body.md
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
           name: ${{ steps.vars.outputs.name }}
-          body: |
-            MailDesk ${{ steps.vars.outputs.tag }}，由 GitHub Actions 自动构建。
-
-            - 提交：${{ github.sha }}
-            - 下载对应平台压缩包，解压后运行 `maildesk`（Windows 为 `maildesk.exe`）
-            - 文件校验：`SHA256SUMS.txt`
+          body_path: release-body.md
           files: artifacts/*
           make_latest: true
           overwrite_files: true
