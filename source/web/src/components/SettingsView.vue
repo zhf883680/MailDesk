@@ -851,6 +851,7 @@ const vTrans = '{{translation}}'
             <div style="display: grid; gap: 10px; font-size: 12.5px; line-height: 1.7; color: var(--ink-2)">
               <div>· 每封邮件最多推送一次；同一个规则命中多封邮件会分别推送。</div>
               <div>· 首次添加邮箱时拉取的历史邮件<strong>不会</strong>推送，避免一次性收到几十条通知。</div>
+              <div>· AI 判定为广告的邮件不会转发，规则命中关键词也一样。</div>
               <div>· 启用转发后后台至少每分钟同步一次，验证码通常在 1 分钟内到达手机。</div>
               <div>· 正文模板留空时：检测到验证码会自动发送「验证码：xxxxxx」，否则发送发件人与摘要。</div>
               <div>· 推送失败会在邮件详情页显示原因，可点「重新推送」重试。</div>
@@ -968,6 +969,7 @@ const vTrans = '{{translation}}'
             <p class="desc">通知与「关键词转发」相互独立，可以同时开启。</p>
             <div style="display: grid; gap: 10px; font-size: 12.5px; line-height: 1.7; color: var(--ink-2)">
               <div>· 默认通知每封新邮件，标题优先使用中文主题，正文只显示 AI 一句话摘要。</div>
+              <div>· AI 判定为广告的邮件不会通知；等分类结果通常需要几秒。</div>
               <div>· 首次添加邮箱时同步到的历史邮件不会通知。</div>
               <div>· MailDesk 正显示在前台时静默，避免重复打扰；点击系统通知会直接打开对应邮件。</div>
               <div>· 同一封邮件只推送一次；失效的浏览器订阅会自动清理。</div>

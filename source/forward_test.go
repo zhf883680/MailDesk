@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -110,5 +112,181 @@ func TestSendBarkError(t *testing.T) {
 	cfg := ForwardConfig{BaseURL: srv.URL, DeviceKey: "abc123"}
 	if err := sendBark(cfg, "t", "b"); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+// forwardTestSetup 准备一个启用转发、只等推送外发的环境。
+func forwardTestSetup(t *testing.T, handler http.HandlerFunc) (*Forwarder, *ConfigManager, *Store) {
+	t.Helper()
+	dir := t.TempDir()
+	cm, err := newConfigManager(dir)
+	if err != nil {
+		t.Fatalf("newConfigManager: %v", err)
+	}
+	st, err := newStore(filepath.Join(dir, "emails"))
+	if err != nil {
+		t.Fatalf("newStore: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if handler != nil {
+			handler(w, r)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":200,"message":"success"}`))
+	}))
+	t.Cleanup(srv.Close)
+	if err := cm.Update(func(c *Config) error {
+		c.Forward = ForwardConfig{Enabled: true, BaseURL: srv.URL, DeviceKey: "abc123"}
+		c.ForwardRules = []ForwardRule{{
+			ID: "r1", Name: "验证码", Enabled: true,
+			Keywords: []string{"verification code"},
+		}}
+		return nil
+	}); err != nil {
+		t.Fatalf("configure forward: %v", err)
+	}
+	return newForwarder(cm, st), cm, st
+}
+
+// 广告邮件命中关键词也不应转发到手机，与 Web Push 的行为保持一致。
+func TestForwardSkipsAds(t *testing.T) {
+	var sends int32
+	f, _, st := forwardTestSetup(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&sends, 1)
+	})
+	email := sampleMail()
+	email.UID = 5
+	email.ID = makeID(email.MailboxID, email.UID)
+	email.IsAd = true
+	st.Upsert(email)
+
+	f.handle(forwardJob{id: email.ID})
+
+	if got := atomic.LoadInt32(&sends); got != 0 {
+		t.Fatalf("bark sends = %d, want 0 for an ad", got)
+	}
+	if e := st.Get(email.ID); e == nil || e.Forwarded || len(e.ForwardLog) > 0 {
+		t.Fatalf("ad email should not be marked forwarded: %#v", e)
+	}
+}
+
+// 新邮件在同步后立即进入转发队列，此时 AI 还没判广告；应等分类结果再决定是否推送。
+func TestForwardWaitsForAIClassification(t *testing.T) {
+	var sends int32
+	f, cm, st := forwardTestSetup(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&sends, 1)
+	})
+	if err := cm.Update(func(c *Config) error {
+		c.AI.Enabled = true
+		c.AI.Classify = true
+		c.AI.APIKey = "test-key"
+		return nil
+	}); err != nil {
+		t.Fatalf("configure AI: %v", err)
+	}
+	email := sampleMail()
+	email.UID = 6
+	email.ID = makeID(email.MailboxID, email.UID)
+	email.AIStatus = "running"
+	st.Upsert(email)
+
+	done := make(chan struct{})
+	go func() {
+		f.handle(forwardJob{id: email.ID})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("forwarding finished before AI classified the email")
+	case <-time.After(300 * time.Millisecond):
+	}
+	if got := atomic.LoadInt32(&sends); got != 0 {
+		t.Fatalf("bark sends = %d, want 0 while AI is still running", got)
+	}
+
+	// AI 判定为广告 → 不转发
+	st.Update(email.ID, func(e *Email) {
+		e.IsAd = true
+		e.AIStatus = "done"
+	})
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("forwarding did not resume after AI finished")
+	}
+	if got := atomic.LoadInt32(&sends); got != 0 {
+		t.Fatalf("bark sends = %d, want 0 for an ad", got)
+	}
+}
+
+// 非广告邮件仍然正常转发，避免广告过滤把正常通知一起挡掉。
+func TestForwardSendsNonAd(t *testing.T) {
+	var sends int32
+	f, cm, st := forwardTestSetup(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&sends, 1)
+	})
+	if err := cm.Update(func(c *Config) error {
+		c.AI.Enabled = true
+		c.AI.Classify = true
+		c.AI.APIKey = "test-key"
+		return nil
+	}); err != nil {
+		t.Fatalf("configure AI: %v", err)
+	}
+	email := sampleMail()
+	email.UID = 7
+	email.ID = makeID(email.MailboxID, email.UID)
+	email.AIStatus = "done"
+	st.Upsert(email)
+
+	f.handle(forwardJob{id: email.ID})
+
+	if got := atomic.LoadInt32(&sends); got != 1 {
+		t.Fatalf("bark sends = %d, want 1", got)
+	}
+	if e := st.Get(email.ID); e == nil || !e.Forwarded {
+		t.Fatalf("email not marked forwarded: %#v", e)
+	}
+}
+
+// 用户手动把误判的广告标为「不是广告」后，转发应照常进行。
+func TestForwardSendsAdOverrideNotAd(t *testing.T) {
+	var sends int32
+	f, _, st := forwardTestSetup(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&sends, 1)
+	})
+	email := sampleMail()
+	email.UID = 8
+	email.ID = makeID(email.MailboxID, email.UID)
+	email.AIStatus = "done"
+	email.IsAd = true
+	email.AdOverride = "not_ad"
+	st.Upsert(email)
+
+	f.handle(forwardJob{id: email.ID})
+
+	if got := atomic.LoadInt32(&sends); got != 1 {
+		t.Fatalf("bark sends = %d, want 1 for a manually corrected email", got)
+	}
+}
+
+// 手动重试也不能把广告推到手机；要转发请先把邮件标为「不是广告」。
+func TestForwardRetryStillSkipsAds(t *testing.T) {
+	var sends int32
+	f, _, st := forwardTestSetup(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&sends, 1)
+	})
+	email := sampleMail()
+	email.UID = 9
+	email.ID = makeID(email.MailboxID, email.UID)
+	email.AIStatus = "done"
+	email.IsAd = true
+	st.Upsert(email)
+
+	f.handle(forwardJob{id: email.ID, force: true})
+
+	if got := atomic.LoadInt32(&sends); got != 0 {
+		t.Fatalf("bark sends = %d, want 0 for an ad on manual retry", got)
 	}
 }

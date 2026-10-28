@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -38,13 +39,19 @@ func newForwarder(cm *ConfigManager, st *Store) *Forwarder {
 	}
 }
 
+// forwardWorkers 与 Web Push 保持一致：转发会等 AI 判完广告，
+// 单线程会让排队中的验证码一起被拖慢，多开几个并行处理。
+const forwardWorkers = 3
+
 func (f *Forwarder) Start() {
-	go func() {
-		for job := range f.queue {
-			f.handle(job)
-			f.inflight.Delete(job.id)
-		}
-	}()
+	for i := 0; i < forwardWorkers; i++ {
+		go func() {
+			for job := range f.queue {
+				f.handle(job)
+				f.inflight.Delete(job.id)
+			}
+		}()
+	}
 }
 
 func (f *Forwarder) Dispatch(id string, firstSync bool) {
@@ -88,18 +95,60 @@ func (f *Forwarder) handle(job forwardJob) {
 	if !ok {
 		return
 	}
+	// 同步后 AI 往往还没判完广告，直接发会把推广邮件推到手机；等分类结果再决定
+	if !job.force {
+		if e = f.waitForAIClassification(job.id); e == nil {
+			return
+		}
+	}
+	if f.cm.Get().IsAdLabel(e) {
+		log.Printf("[forward] 跳过转发：广告默认忽略 id=%s", job.id)
+		return
+	}
 	title, body := buildNotification(cfg, rule, e)
 	err := sendBark(cfg.Forward, title, body)
-	log := ForwardLog{RuleName: rule.Name, OK: err == nil, At: time.Now()}
+	entry := ForwardLog{RuleName: rule.Name, OK: err == nil, At: time.Now()}
 	if err != nil {
-		log.Error = truncate(err.Error(), 200)
+		entry.Error = truncate(err.Error(), 200)
 	}
 	f.st.Update(e.ID, func(em *Email) {
-		em.ForwardLog = append(em.ForwardLog, log)
+		em.ForwardLog = append(em.ForwardLog, entry)
 		if err == nil {
 			em.Forwarded = true
 		}
 	})
+}
+
+// forwardAIWait 是等待 AI 判定广告的上限。转发主要用于验证码，不能被 AI 卡太久。
+const forwardAIWait = 60 * time.Second
+
+// waitForAIClassification 等 AI 判定完广告再转发。
+// 同步完成后转发队列立刻开始工作，此时 AI 分类往往还没出结果，
+// 直接判断 IsAd 会把广告当成普通邮件推出去。
+func (f *Forwarder) waitForAIClassification(emailID string) *Email {
+	deadline := time.Now().Add(forwardAIWait)
+	for {
+		e := f.st.Copy(emailID)
+		if e == nil {
+			return nil
+		}
+		ai := f.cm.Get().AI
+		if !ai.Enabled || !ai.Classify {
+			return e
+		}
+		// 分类结果一落地就能判断广告，不必等翻译和自定义规则跑完
+		if e.Summary != "" || e.Category != "" || e.AIError != "" {
+			return e
+		}
+		if e.AIStatus != "pending" && e.AIStatus != "running" {
+			return e
+		}
+		if time.Now().After(deadline) {
+			log.Printf("[forward] AI 分类等待超时，按当前内容转发 id=%s", emailID)
+			return e
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 }
 
 func matchForwardRule(rules []ForwardRule, e *Email) (ForwardRule, bool) {
