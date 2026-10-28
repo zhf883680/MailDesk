@@ -6,21 +6,22 @@ import {
   setAdIgnored,
 } from '../store'
 import { api } from '../api'
-import { fmtFull, fmtTime, importanceLabel, renderMarkdownish, senderAvatar } from '../utils'
+import { fmtFull, fmtTime, importanceLabel, renderMarkdownish, senderAvatar, hasTranslation, initialBodyView, plainBodyKind } from '../utils'
 
-const bodyView = ref('zh') // zh=译文, html=网页原文
+const bodyView = ref('zh') // zh=译文, html=网页原文, text=纯文本原文
 const translating = ref(false)
 const confirmDelete = ref(false)
 
 const mail = computed(() => state.selected)
-const hasTrans = computed(() => !!(mail.value && (mail.value.translated_md || mail.value.translated_html || mail.value.translated)))
+const hasTrans = computed(() => hasTranslation(mail.value))
 const needsFormatUpgrade = computed(() => !!(mail.value?.html && mail.value?.translated && !mail.value?.translated_html))
+const plainKind = computed(() => plainBodyKind(mail.value, bodyView.value))
 const mailbox = computed(() => state.mailboxes.find((m) => m.id === mail.value?.mailbox_id))
 const senderAvatarView = computed(() => senderAvatar(mail.value?.from_name, mail.value?.from_addr))
 
 watch(() => state.selected?.id, () => {
-  // 有译文时默认看译文；尚未翻译则先展示网页原文
-  bodyView.value = hasTrans.value || !state.selected?.html ? 'zh' : 'html'
+  // 有译文时默认看译文；否则展示邮件原有的 HTML 版式或纯文本正文
+  bodyView.value = initialBodyView(state.selected)
   translating.value = false
   confirmDelete.value = false
 })
@@ -38,7 +39,8 @@ async function showTranslated() {
     if (state.selected?.id === e.id) state.selected = e
   } catch (err) {
     toast(err.message, 'err')
-    if (bodyView.value === 'zh' && mail.value?.html) bodyView.value = 'html'
+    // 翻译失败时退回邮件原有内容，避免正文区域空白
+    if (bodyView.value === 'zh') bodyView.value = mail.value?.html ? 'html' : 'text'
   } finally {
     translating.value = false
   }
@@ -266,6 +268,7 @@ function toList() {
               译文
             </button>
             <button v-if="mail.html" :class="{ on: bodyView === 'html' }" @click="chooseView('html')">网页原文</button>
+            <button v-else-if="mail.text" :class="{ on: bodyView === 'text' }" @click="chooseView('text')">原文</button>
           </div>
           <span v-if="hasTrans && mail.subject_zh" class="trans-note" style="margin-bottom: 0"><Icon name="languages" :size="11" /> {{ mail.subject_zh }}</span>
           <div class="grow" style="flex: 1"></div>
@@ -294,13 +297,14 @@ function toList() {
           referrerpolicy="no-referrer"
         ></iframe>
 
-        <!-- 纯文本邮件的译文 -->
+        <!-- 纯文本邮件：译文 / 原文 -->
         <div v-else class="mail-plain">
           <div v-if="needsFormatUpgrade" class="translation-upgrade">
             <span><Icon name="alert" :size="13" /> 这是旧版纯文本译文，重新翻译可恢复邮件原有版式。</span>
             <button class="btn btn-sm" @click="showTranslated">重译并恢复格式</button>
           </div>
-          <div v-if="mail.translated" class="mail-body translated">{{ mail.translated }}</div>
+          <div v-if="plainKind === 'translation'" class="mail-body translated">{{ mail.translated }}</div>
+          <div v-else-if="plainKind === 'original'" class="mail-body">{{ mail.text }}</div>
           <div v-else class="md-empty">
             <Icon name="languages" :size="16" />
             <span>{{ state.ai.translate === false ? '翻译功能已在设置中关闭。' : '这封邮件还没有译文，点「译文」重新尝试。' }}</span>

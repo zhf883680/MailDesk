@@ -13,6 +13,7 @@ import (
 
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
+	"github.com/emersion/go-message"
 	_ "github.com/emersion/go-message/charset"
 	"github.com/emersion/go-message/mail"
 	xhtml "golang.org/x/net/html"
@@ -275,8 +276,9 @@ func decodeHeader(s string) string {
 
 // applyRawBody 解析 MIME 结构，抽取纯文本与 HTML
 func applyRawBody(e *Email, raw []byte) {
-	mr, err := mail.CreateReader(bytes.NewReader(raw))
-	if err != nil {
+	// 顶层字符集未知时 CreateReader 仍会返回可用的 Reader，不应整封丢弃
+	mr, _ := mail.CreateReader(bytes.NewReader(raw))
+	if mr == nil {
 		// 退化处理：当作纯文本
 		txt := strings.TrimSpace(string(raw))
 		e.Text = txt
@@ -308,27 +310,55 @@ func applyRawBody(e *Email, raw []byte) {
 	}
 
 	var text, htmlBody string
+	// 有些发件人把唯一的正文声明成 attachment，先收集起来，只有在没有内联正文时才使用
+	var attachText, attachHTML string
+	readTextPart := func(ct string, body io.Reader) (plain, html string) {
+		b, err := io.ReadAll(io.LimitReader(body, 8*1024*1024))
+		if err != nil {
+			return "", ""
+		}
+		switch {
+		case strings.HasPrefix(ct, "text/plain"):
+			return string(b) + "\n", ""
+		case strings.HasPrefix(ct, "text/html"):
+			return "", string(b) + "\n"
+		}
+		return "", ""
+	}
 	for {
 		p, err := mr.NextPart()
-		if err == io.EOF || err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			// 未知字符集/编码的分段会被跳过，但它后面的分段仍然有效，
+			// 不能因为这一处错误丢掉整封邮件的正文
+			if !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
+				break
+			}
+		}
+		if p == nil {
+			continue
 		}
 		switch h := p.Header.(type) {
 		case *mail.InlineHeader:
 			ct, _, _ := h.ContentType()
-			b, err := io.ReadAll(io.LimitReader(p.Body, 8*1024*1024))
-			if err != nil {
+			plain, html := readTextPart(ct, p.Body)
+			text += plain
+			htmlBody += html
+		case *mail.AttachmentHeader:
+			ct, _, _ := h.ContentType()
+			// 只缓冲文本类附件，避免把 PDF、图片等大附件读进内存
+			if !strings.HasPrefix(ct, "text/") {
 				continue
 			}
-			switch {
-			case strings.HasPrefix(ct, "text/plain"):
-				text += string(b) + "\n"
-			case strings.HasPrefix(ct, "text/html"):
-				htmlBody += string(b) + "\n"
-			}
-		case *mail.AttachmentHeader:
-			// 跳过附件
+			plain, html := readTextPart(ct, p.Body)
+			attachText += plain
+			attachHTML += html
 		}
+	}
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(htmlBody) == "" {
+		text, htmlBody = attachText, attachHTML
 	}
 	e.Text = normalizeText(text)
 	e.HTML = sanitizeHTML(htmlBody)

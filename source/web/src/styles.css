@@ -330,6 +330,7 @@ a { color: var(--accent); text-decoration: none; }
 .ai-panel::before {
   content: ""; position: absolute; right: -30px; top: -40px; width: 140px; height: 140px;
   background: radial-gradient(circle, rgba(15, 107, 92, 0.09), transparent 65%);
+  pointer-events: none;
 }
 .ai-head { display: flex; align-items: center; gap: 7px; font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--accent-ink); font-weight: 700; margin-bottom: 9px; }
 .ai-head .spark { color: var(--accent); }

@@ -64,6 +64,27 @@ export function importanceLabel(v) {
   return { high: '重要', medium: '一般', low: '低' }[v] || ''
 }
 
+export function hasTranslation(mail) {
+  return !!(mail && (mail.translated_md || mail.translated_html || mail.translated))
+}
+
+// 阅读页默认视图：有译文先看中文；没有译文时优先展示邮件原有的版式/正文。
+export function initialBodyView(mail) {
+  if (!mail) return 'zh'
+  if (hasTranslation(mail)) return 'zh'
+  if (mail.html) return 'html'
+  if (mail.text) return 'text'
+  return 'zh'
+}
+
+// 纯文本正文显示什么：请求原文时显示原文，否则显示译文；
+// 两者都没有时留空，交给阅读页提示用户点击「翻译」。
+export function plainBodyKind(mail, view) {
+  if (!mail) return 'empty'
+  if (view === 'text') return mail.text ? 'original' : 'empty'
+  return mail.translated ? 'translation' : 'empty'
+}
+
 function sameFormValue(a, b) {
   if (Object.is(a, b)) return true
   if (Array.isArray(a) || Array.isArray(b)) {
