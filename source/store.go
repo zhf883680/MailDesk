@@ -31,23 +31,32 @@ type RuleResult struct {
 	Error    string    `json:"error,omitempty"`
 }
 
+// Attachment 只保存附件的元数据；字节在用户点击下载时按 UID 重新从 IMAP 取回。
+type Attachment struct {
+	Index       int    `json:"index"` // 分段顺序中第几个附件，下载时据此重新定位
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	Size        int    `json:"size"`
+}
+
 type Email struct {
-	ID        string    `json:"id"`
-	MailboxID string    `json:"mailbox_id"`
-	UID       uint32    `json:"uid"`
-	Subject   string    `json:"subject"`
-	FromName  string    `json:"from_name"`
-	FromAddr  string    `json:"from_addr"`
-	To        []Addr    `json:"to"`
-	CC        []Addr    `json:"cc"`
-	Date      time.Time `json:"date"`
-	Snippet   string    `json:"snippet"`
-	Text      string    `json:"text"`
-	HTML      string    `json:"html"`
-	Markdown  string    `json:"markdown,omitempty"`
-	Seen      bool      `json:"seen"`
-	Flagged   bool      `json:"flagged"`
-	Size      uint32    `json:"size"`
+	ID          string       `json:"id"`
+	MailboxID   string       `json:"mailbox_id"`
+	UID         uint32       `json:"uid"`
+	Subject     string       `json:"subject"`
+	FromName    string       `json:"from_name"`
+	FromAddr    string       `json:"from_addr"`
+	To          []Addr       `json:"to"`
+	CC          []Addr       `json:"cc"`
+	Date        time.Time    `json:"date"`
+	Snippet     string       `json:"snippet"`
+	Text        string       `json:"text"`
+	HTML        string       `json:"html"`
+	Markdown    string       `json:"markdown,omitempty"`
+	Seen        bool         `json:"seen"`
+	Flagged     bool         `json:"flagged"`
+	Size        uint32       `json:"size"`
+	Attachments []Attachment `json:"attachments,omitempty"`
 
 	AIStatus       string       `json:"ai_status"` // off|pending|running|done|error
 	SubjectZh      string       `json:"subject_zh"`
@@ -294,6 +303,7 @@ func cloneEmail(e *Email) *Email {
 	cp.CC = append([]Addr(nil), e.CC...)
 	cp.RuleResults = append([]RuleResult(nil), e.RuleResults...)
 	cp.ForwardLog = append([]ForwardLog(nil), e.ForwardLog...)
+	cp.Attachments = append([]Attachment(nil), e.Attachments...)
 	return &cp
 }
 
@@ -378,6 +388,10 @@ func (s *Store) MergeFetched(mb string, fetched []*Email) (added, needAI []*Emai
 			if e.Text == "" && old.Text != "" {
 				e.Text = old.Text
 				e.HTML = old.HTML
+			}
+			// 超大邮件不抓正文，新结果里没有附件元数据时沿用上次解析到的
+			if len(e.Attachments) == 0 && len(old.Attachments) > 0 {
+				e.Attachments = old.Attachments
 			}
 			if e.AIStatus == "" {
 				e.AIStatus = "pending"

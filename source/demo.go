@@ -183,6 +183,10 @@ You can download the PDF from your dashboard.
 — Cloudbase 账单团队`,
 		Summary:    "云服务月账单 248 美元，将于 10 月 28 日自动扣款，无需操作。",
 		Importance: "low", NeedAction: false, Category: "账单",
+		Attachments: []Attachment{
+			{Index: 0, Filename: "INV-2084.pdf", ContentType: "application/pdf", Size: 245760},
+			{Index: 1, Filename: "明细.csv", ContentType: "text/csv", Size: 18432},
+		},
 		RuleResults: []RuleResult{{RuleID: "r2", RuleName: "账单信息提取", Color: "#b7791f", At: now, Content: `**金额**：$248.00 USD
 **到期日**：2026-10-28（自动扣款）
 **账单周期**：2026-10-01 至 2026-10-31
@@ -408,4 +412,16 @@ View full report →`,
 		Importance: "high", NeedAction: true, Category: "账单",
 	})
 	fmt.Println("演示数据已载入")
+}
+
+// demoAttachment 为演示邮箱生成占位附件内容，避免演示环境点击下载直接报错。
+func demoAttachment(meta Attachment) *AttachmentData {
+	body := fmt.Sprintf("MailDesk 演示附件\n\n文件名：%s\n类型：%s\n大小：%d 字节\n\n这是演示数据，不是真实的邮件附件。\n",
+		meta.Filename, meta.ContentType, meta.Size)
+	b := []byte(body)
+	// 补足到元数据声明的大小，让下载进度与列表里显示的一致
+	for len(b) < meta.Size {
+		b = append(b, ' ')
+	}
+	return &AttachmentData{Filename: meta.Filename, MimeType: meta.ContentType, Bytes: b}
 }

@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -633,6 +635,10 @@ func (s *Server) handleEmails(w http.ResponseWriter, r *http.Request, parts []st
 		}
 		return
 	}
+	if len(parts) == 4 && parts[2] == "attachments" {
+		s.downloadAttachment(w, r, id, parts[3])
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		e := s.st.Get(id)
@@ -672,6 +678,76 @@ func (s *Server) handleEmails(w http.ResponseWriter, r *http.Request, parts []st
 	default:
 		fail(w, 405, "方法不允许")
 	}
+}
+
+// downloadAttachment 按需从 IMAP 取回附件并直接返回字节，不在本地缓存。
+func (s *Server) downloadAttachment(w http.ResponseWriter, r *http.Request, id, indexStr string) {
+	if r.Method != http.MethodGet {
+		fail(w, 405, "方法不允许")
+		return
+	}
+	index, err := strconv.Atoi(indexStr)
+	if err != nil || index < 0 {
+		fail(w, 400, "附件编号无效")
+		return
+	}
+	e := s.st.Get(id)
+	if e == nil {
+		fail(w, 404, "邮件不存在")
+		return
+	}
+	if index >= len(e.Attachments) {
+		fail(w, 404, "附件不存在")
+		return
+	}
+	meta := e.Attachments[index]
+	mb, exists := s.cm.Mailbox(e.MailboxID)
+	if !exists {
+		fail(w, 404, "邮箱未配置")
+		return
+	}
+
+	var data *AttachmentData
+	if mb.Demo {
+		data = demoAttachment(meta)
+	} else {
+		pass, err := s.cm.Password(mb)
+		if err != nil || pass == "" {
+			fail(w, 500, "无法获取邮箱授权码，请在设置中重新填写")
+			return
+		}
+		data, err = fetchAttachment(mb, pass, e.UID, index)
+		if err != nil {
+			fail(w, 502, err.Error())
+			return
+		}
+	}
+
+	name := sanitizeFilename(meta.Filename)
+	if data.Filename != "" {
+		name = data.Filename
+	}
+	ct := data.MimeType
+	if ct == "" {
+		ct = meta.ContentType
+	}
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	disp := "attachment"
+	if name != "" {
+		if v := mime.FormatMediaType("attachment", map[string]string{"filename": name}); v != "" {
+			disp = v
+		}
+	}
+	h := w.Header()
+	h.Set("Content-Type", ct)
+	h.Set("Content-Disposition", disp)
+	h.Set("Content-Length", strconv.Itoa(len(data.Bytes)))
+	// 已登录用户的私有内容，任何中间层都不应缓存
+	h.Set("Cache-Control", "private, no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data.Bytes)
 }
 
 func (s *Server) listEmails(w http.ResponseWriter, r *http.Request) {

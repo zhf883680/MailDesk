@@ -6,6 +6,7 @@ import {
   shouldDismissOnBackdrop,
   initialBodyView,
   plainBodyKind,
+  fmtSize,
 } from '../src/utils.js'
 
 test('senderAvatar uses initials and a stable sender color', () => {
@@ -56,4 +57,13 @@ test('body view falls back to the original HTML when there is no translation', (
   const mail = { text: 'Hello', html: '<p>Hello</p>' }
 
   assert.equal(initialBodyView(mail), 'html')
+})
+
+test('fmtSize formats attachment sizes for humans', () => {
+  assert.equal(fmtSize(0), '')
+  assert.equal(fmtSize(512), '512 B')
+  assert.equal(fmtSize(18432), '18 KB')
+  assert.equal(fmtSize(245760), '240 KB')
+  assert.equal(fmtSize(2.4 * 1024 * 1024), '2.4 MB')
+  assert.equal(fmtSize(15 * 1024 * 1024), '15 MB')
 })

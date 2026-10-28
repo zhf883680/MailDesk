@@ -85,6 +85,16 @@ export function plainBodyKind(mail, view) {
   return mail.translated ? 'translation' : 'empty'
 }
 
+// 附件大小：18432 → "18 KB"，245760 → "240 KB"，2.4MB → "2.4 MB"
+export function fmtSize(bytes) {
+  const n = Number(bytes)
+  if (!Number.isFinite(n) || n <= 0) return ''
+  if (n < 1024) return `${Math.round(n)} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  const mb = n / (1024 * 1024)
+  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`
+}
+
 function sameFormValue(a, b) {
   if (Object.is(a, b)) return true
   if (Array.isArray(a) || Array.isArray(b)) {

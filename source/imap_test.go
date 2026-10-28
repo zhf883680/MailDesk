@@ -130,3 +130,100 @@ func TestApplyRawBodyFallsBackToHTMLPartMarkedAsAttachment(t *testing.T) {
 		t.Fatalf("HTML body declared as attachment was dropped: html=%q", email.HTML)
 	}
 }
+
+// 带两个附件的 multipart 样例：正文 HTML + 内联图片 + PDF + CSV
+func attachmentFixture() []byte {
+	return []byte(strings.Join([]string{
+		"From: Billing <billing@example.com>",
+		"Subject: Invoice",
+		"MIME-Version: 1.0",
+		"Content-Type: multipart/mixed; boundary=OUT",
+		"",
+		"--OUT",
+		"Content-Type: text/html; charset=utf-8",
+		"",
+		"<html><body><p>发票内容</p></body></html>",
+		"--OUT",
+		"Content-Type: image/png; name=logo.png",
+		"Content-Disposition: inline; filename=logo.png",
+		"Content-Transfer-Encoding: base64",
+		"",
+		"iVBORw0KGgo=",
+		"--OUT",
+		"Content-Type: application/pdf; name=INV-1.pdf",
+		"Content-Disposition: attachment; filename=\"INV-1.pdf\"",
+		"Content-Transfer-Encoding: base64",
+		"",
+		"JVBERi0xLjQK",
+		"--OUT",
+		"Content-Type: text/csv; charset=utf-8",
+		"Content-Disposition: attachment; filename*=UTF-8''%E6%98%8E%E7%BB%86.csv",
+		"",
+		"a,b\r\n1,2\r\n",
+		"--OUT--",
+		"",
+	}, "\r\n"))
+}
+
+func TestApplyRawBodyCollectsAttachmentMetadata(t *testing.T) {
+	email := &Email{}
+
+	applyRawBody(email, attachmentFixture())
+
+	if len(email.Attachments) != 2 {
+		t.Fatalf("expected 2 attachments (inline image excluded), got %d: %+v", len(email.Attachments), email.Attachments)
+	}
+	pdf, csv := email.Attachments[0], email.Attachments[1]
+	if pdf.Index != 0 || pdf.Filename != "INV-1.pdf" || pdf.ContentType != "application/pdf" {
+		t.Fatalf("unexpected pdf metadata: %+v", pdf)
+	}
+	// base64 "JVBERi0xLjQK" 解码后是 9 字节
+	if pdf.Size != 9 {
+		t.Fatalf("expected decoded pdf size 9, got %d", pdf.Size)
+	}
+	if csv.Index != 1 || csv.Filename != "明细.csv" || csv.ContentType != "text/csv" {
+		t.Fatalf("unexpected csv metadata: %+v", csv)
+	}
+	if strings.Contains(email.Text, "JVBERi0") || strings.Contains(email.HTML, "JVBERi0") {
+		t.Fatalf("pdf bytes leaked into body: text=%q html=%q", email.Text, email.HTML)
+	}
+	if !strings.Contains(email.HTML, "发票内容") {
+		t.Fatalf("html body missing: %q", email.HTML)
+	}
+}
+
+func TestExtractAttachmentPart(t *testing.T) {
+	raw := attachmentFixture()
+
+	data, err := extractAttachmentPart(raw, 1)
+	if err != nil {
+		t.Fatalf("extractAttachmentPart: %v", err)
+	}
+	if data.Filename != "明细.csv" || data.MimeType != "text/csv" {
+		t.Fatalf("unexpected attachment: %+v", data)
+	}
+	// 附件字节按原样返回，未做换行归一化
+	if string(data.Bytes) != "a,b\r\n1,2\r\n" {
+		t.Fatalf("unexpected csv bytes: %q", string(data.Bytes))
+	}
+
+	if _, err := extractAttachmentPart(raw, 9); err == nil {
+		t.Fatal("expected an error for an out-of-range index")
+	}
+}
+
+func TestSanitizeFilename(t *testing.T) {
+	cases := map[string]string{
+		"../../etc/passwd": "....etcpasswd",
+		`a"b.pdf`:          "ab.pdf",
+		"normal.pdf":       "normal.pdf",
+		"":                 "",
+		"..":               "",
+		"  spaced.txt  ":   "spaced.txt",
+	}
+	for in, want := range cases {
+		if got := sanitizeFilename(in); got != want {
+			t.Fatalf("sanitizeFilename(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

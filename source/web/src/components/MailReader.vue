@@ -6,7 +6,7 @@ import {
   setAdIgnored,
 } from '../store'
 import { api } from '../api'
-import { fmtFull, fmtTime, importanceLabel, renderMarkdownish, senderAvatar, hasTranslation, initialBodyView, plainBodyKind } from '../utils'
+import { fmtFull, fmtTime, fmtSize, importanceLabel, renderMarkdownish, senderAvatar, hasTranslation, initialBodyView, plainBodyKind } from '../utils'
 
 const bodyView = ref('zh') // zh=译文, html=网页原文, text=纯文本原文
 const translating = ref(false)
@@ -76,6 +76,20 @@ async function retryForward() {
 
 function backToList() {
   state.mobilePane = 'list'
+}
+
+const downloading = ref(-1)
+
+async function downloadAttachment(a) {
+  if (!mail.value || downloading.value !== -1) return
+  downloading.value = a.index
+  try {
+    await api.download(mail.value.id, a.index, a.filename)
+  } catch (err) {
+    toast(err.message, 'err')
+  } finally {
+    downloading.value = -1
+  }
 }
 
 async function askDelete() {
@@ -174,6 +188,26 @@ function toList() {
           <div class="sender-mail" style="margin-top: 4px" v-if="toList()">发给 {{ toList() }}</div>
         </div>
         <div class="sender-date">{{ fmtFull(mail.date) }}</div>
+      </div>
+
+      <div v-if="mail.attachments && mail.attachments.length" class="attach-list">
+        <div class="attach-head">
+          <Icon name="paperclip" :size="12" />
+          <span>附件</span>
+          <span class="attach-count">{{ mail.attachments.length }}</span>
+        </div>
+        <button
+          v-for="a in mail.attachments" :key="a.index"
+          class="attach-item"
+          :disabled="downloading !== -1"
+          :title="'下载 ' + a.filename"
+          @click="downloadAttachment(a)"
+        >
+          <span class="attach-icon"><Icon name="file" :size="15" /></span>
+          <span class="attach-name">{{ a.filename }}</span>
+          <span class="attach-size">{{ fmtSize(a.size) }}</span>
+          <Icon :name="downloading === a.index ? 'refresh' : 'download'" :size="14" :class="{ spin: downloading === a.index }" />
+        </button>
       </div>
 
       <div v-if="mail.handled" class="handled-note">

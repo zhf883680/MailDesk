@@ -312,6 +312,7 @@ func applyRawBody(e *Email, raw []byte) {
 	var text, htmlBody string
 	// 有些发件人把唯一的正文声明成 attachment，先收集起来，只有在没有内联正文时才使用
 	var attachText, attachHTML string
+	var attachments []Attachment
 	readTextPart := func(ct string, body io.Reader) (plain, html string) {
 		b, err := io.ReadAll(io.LimitReader(body, 8*1024*1024))
 		if err != nil {
@@ -348,14 +349,40 @@ func applyRawBody(e *Email, raw []byte) {
 			htmlBody += html
 		case *mail.AttachmentHeader:
 			ct, _, _ := h.ContentType()
+			// 先按元数据记录，正文兜底只认文本类分段
+			att := Attachment{Index: len(attachments), ContentType: ct}
+			if name, ferr := h.Filename(); ferr == nil {
+				att.Filename = sanitizeFilename(name)
+			}
+			if att.Filename == "" {
+				att.Filename = defaultAttachmentName(ct)
+			}
 			// 只缓冲文本类附件，避免把 PDF、图片等大附件读进内存
 			if !strings.HasPrefix(ct, "text/") {
+				// Part.Body 已完成 base64/QP 解码，数出来的就是真实字节数；
+				// 计数走 io.Discard，只是流式读取，不会把附件留在内存里
+				n, _ := io.Copy(io.Discard, p.Body)
+				att.Size = int(n)
+				attachments = append(attachments, att)
 				continue
 			}
-			plain, html := readTextPart(ct, p.Body)
-			attachText += plain
-			attachHTML += html
+			b, rerr := io.ReadAll(io.LimitReader(p.Body, maxAttachSize))
+			if rerr != nil {
+				attachments = append(attachments, att)
+				continue
+			}
+			att.Size = len(b)
+			attachments = append(attachments, att)
+			switch {
+			case strings.HasPrefix(ct, "text/plain"):
+				attachText += string(b) + "\n"
+			case strings.HasPrefix(ct, "text/html"):
+				attachHTML += string(b) + "\n"
+			}
 		}
+	}
+	if len(attachments) > 0 {
+		e.Attachments = attachments
 	}
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(htmlBody) == "" {
 		text, htmlBody = attachText, attachHTML
@@ -369,6 +396,159 @@ func applyRawBody(e *Email, raw []byte) {
 	e.Text = truncate(e.Text, 60000)
 	e.HTML = truncateBytes(e.HTML, 400000)
 	e.Snippet = snippetOf(e.Text)
+}
+
+// 附件相关上限：解析元数据时单个附件最多统计这么多字节；
+// 下载时整封邮件最多读取这么多字节。
+const (
+	maxAttachSize   = 10 * 1024 * 1024
+	maxMessageBytes = 40 * 1024 * 1024
+)
+
+// sanitizeFilename 去掉路径分隔符与控制字符，避免把发件人给的文件名原样交给浏览器。
+func sanitizeFilename(s string) string {
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '/', '\\', '"', '\r', '\n', '\t', 0:
+			return -1
+		}
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
+	name := strings.TrimSpace(s)
+	// 只由点组成（"." ".."）时没有实际文件名
+	if strings.Trim(name, ".") == "" {
+		return ""
+	}
+	if len(name) > 180 {
+		name = name[:180]
+	}
+	return name
+}
+
+func defaultAttachmentName(ct string) string {
+	ext := ""
+	if t, _, err := mime.ParseMediaType(ct); err == nil {
+		if exts, ok := attachmentExtByType[t]; ok {
+			ext = exts
+		}
+	}
+	return "附件" + ext
+}
+
+// attachmentExtByType 只覆盖常见类型，用于发件人没给文件名时兜底
+var attachmentExtByType = map[string]string{
+	"application/pdf": ".pdf",
+	"application/zip": ".zip",
+	"image/png":       ".png",
+	"image/jpeg":      ".jpg",
+	"image/gif":       ".gif",
+	"text/plain":      ".txt",
+	"text/csv":        ".csv",
+}
+
+// AttachmentData 是下载时取回的一段附件内容
+type AttachmentData struct {
+	Filename string
+	MimeType string
+	Bytes    []byte
+}
+
+// fetchAttachment 按 UID 重新取回整封邮件，解析出第 index 个附件分段。
+func fetchAttachment(mb Mailbox, pass string, uid uint32, index int) (*AttachmentData, error) {
+	c, err := imapLogin(mb, pass)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Logout()
+	c.Timeout = 60 * time.Second
+	if _, err := c.Select("INBOX", true); err != nil {
+		return nil, fmt.Errorf("打开收件箱失败: %w", err)
+	}
+	section := &imap.BodySectionName{Peek: true}
+	set := new(imap.SeqSet)
+	set.AddNum(uid)
+	ch := make(chan *imap.Message, 4)
+	done := make(chan error, 1)
+	go func() {
+		done <- c.UidFetch(set, []imap.FetchItem{section.FetchItem()}, ch)
+	}()
+	var raw []byte
+	tooLarge := false
+	for msg := range ch {
+		r := msg.GetBody(section)
+		if r == nil {
+			continue
+		}
+		b, err := io.ReadAll(io.LimitReader(r, maxMessageBytes+1))
+		if err != nil {
+			continue
+		}
+		if len(b) > maxMessageBytes {
+			tooLarge = true
+			continue
+		}
+		raw = b
+	}
+	if err := <-done; err != nil {
+		return nil, fmt.Errorf("读取邮件失败: %w", err)
+	}
+	if tooLarge {
+		return nil, fmt.Errorf("邮件过大（超过 %dMB），请在邮箱客户端中下载附件", maxMessageBytes/1024/1024)
+	}
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("邮件已不在邮箱中，可能已被删除或移动")
+	}
+	return extractAttachmentPart(raw, index)
+}
+
+// extractAttachmentPart 从原始 MIME 中取出第 index 个附件分段（与 applyRawBody 的编号顺序一致）。
+func extractAttachmentPart(raw []byte, index int) (*AttachmentData, error) {
+	mr, _ := mail.CreateReader(bytes.NewReader(raw))
+	if mr == nil {
+		return nil, fmt.Errorf("无法解析邮件内容")
+	}
+	defer mr.Close()
+	n := 0
+	for {
+		p, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
+			break
+		}
+		if p == nil {
+			continue
+		}
+		h, ok := p.Header.(*mail.AttachmentHeader)
+		if !ok {
+			continue
+		}
+		ct, _, _ := h.ContentType()
+		if n == index {
+			b, err := io.ReadAll(io.LimitReader(p.Body, maxAttachSize+1))
+			if err != nil {
+				return nil, fmt.Errorf("读取附件失败: %w", err)
+			}
+			if len(b) > maxAttachSize {
+				return nil, fmt.Errorf("附件过大（超过 %dMB），请在邮箱客户端中下载", maxAttachSize/1024/1024)
+			}
+			name := ""
+			if fn, ferr := h.Filename(); ferr == nil {
+				name = sanitizeFilename(fn)
+			}
+			if name == "" {
+				name = defaultAttachmentName(ct)
+			}
+			return &AttachmentData{Filename: name, MimeType: ct, Bytes: b}, nil
+		}
+		n++
+		// 未读完的分段会把剩余字节丢弃，但不会影响后续分段，无需手动 drain
+	}
+	return nil, fmt.Errorf("附件不存在，邮件可能已更新")
 }
 
 var (

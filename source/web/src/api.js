@@ -72,4 +72,34 @@ export const api = {
   testAI: (data) => request('ai/test', { method: 'POST', body: data }),
   polish: (data) => request('ai/polish', { method: 'POST', body: data }),
   digest: (force) => request('digest' + (force ? '?force=1' : ''), { method: force ? 'POST' : 'GET' }),
+
+  // 附件下载：request() 只会解析 JSON，这里单独取二进制，
+  // 失败时仍按后端返回的 JSON 错误信息抛出，便于页面弹提示而不是跳空白页
+  download: async (id, index, filename) => {
+    let res
+    try {
+      res = await fetch(BASE + `emails/${encodeURIComponent(id)}/attachments/${index}`, {
+        credentials: 'same-origin',
+      })
+    } catch (e) {
+      throw new Error('无法连接服务，请确认程序正在运行')
+    }
+    if (!res.ok) {
+      let message = `下载失败 (${res.status})`
+      try {
+        const data = await res.json()
+        if (data && data.error) message = data.error
+      } catch (e) { /* 非 JSON 响应，保留默认提示 */ }
+      throw new Error(message)
+    }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || 'attachment'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  },
 }
