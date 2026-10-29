@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 
 import {
   senderAvatar,
-  shouldDismissOnBackdrop,
   initialBodyView,
   plainBodyKind,
   fmtSize,
@@ -23,20 +22,6 @@ test('senderAvatar uses a single character', () => {
   assert.equal(senderAvatar('【速界】Github日报', 'digest@example.com').label, '速')
   assert.equal(senderAvatar('张三丰', 'zhang@example.com').label, '张')
   assert.equal(senderAvatar('Marta Lindqvist', 'marta@brightside.example').label, 'M')
-})
-
-test('backdrop dismissal is blocked while a form contains unsaved changes', () => {
-  const initial = { to: '', subject: '', mailbox_ids: [] }
-  const current = { to: 'alex@example.com', subject: '', mailbox_ids: [] }
-
-  assert.equal(shouldDismissOnBackdrop(initial, current), false)
-})
-
-test('backdrop dismissal is allowed when a form is unchanged', () => {
-  const initial = { to: 'alex@example.com', subject: '', mailbox_ids: ['work'] }
-  const current = { to: 'alex@example.com', subject: '', mailbox_ids: ['work'] }
-
-  assert.equal(shouldDismissOnBackdrop(initial, current), true)
 })
 
 test('plain-text emails show their original body instead of an empty pane', () => {

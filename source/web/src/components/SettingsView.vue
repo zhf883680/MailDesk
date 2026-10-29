@@ -3,7 +3,6 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import Icon from './Icon.vue'
 import { api } from '../api'
 import { state, reloadBoot, toast } from '../store'
-import { shouldDismissOnBackdrop } from '../utils'
 import {
   currentPushEnvironment,
   pushIssueFor,
@@ -48,12 +47,6 @@ const mbForm = reactive({
   smtp_host: '', smtp_port: 465, smtp_tls: true,
   color: '#0f6b5c',
 })
-const initialMbForm = ref({})
-
-function snapshotForm(form) {
-  return JSON.parse(JSON.stringify(form))
-}
-
 function applyPreset(domain) {
   const p = presets.find((x) => x.domain === domain)
   if (!p) return
@@ -80,7 +73,6 @@ function openAdd() {
   })
   editingId.value = ''
   mbMsg.value = { text: '', err: false }
-  initialMbForm.value = snapshotForm(mbForm)
   showMbForm.value = true
 }
 
@@ -93,16 +85,7 @@ function openEdit(mb) {
   })
   editingId.value = mb.id
   mbMsg.value = { text: '', err: false }
-  initialMbForm.value = snapshotForm(mbForm)
   showMbForm.value = true
-}
-
-function closeMbFromBackdrop() {
-  if (!shouldDismissOnBackdrop(initialMbForm.value, mbForm)) {
-    toast('已保留填写内容，请使用取消按钮关闭')
-    return
-  }
-  showMbForm.value = false
 }
 
 async function testMb() {
@@ -211,7 +194,6 @@ const rules = ref([])
 const showRuleForm = ref(false)
 const ruleIndex = ref(-1)
 const ruleForm = reactive({ name: '', keywords: '', from_contains: '', to_contains: '', prompt: '', enabled: true, color: '#0f6b5c' })
-const initialRuleForm = ref({})
 const ruleSaving = ref(false)
 
 onMounted(async () => {
@@ -234,16 +216,7 @@ function openRule(i = -1) {
   } else {
     Object.assign(ruleForm, { name: '', keywords: '', from_contains: '', to_contains: '', prompt: '', enabled: true, color: '#0f6b5c' })
   }
-  initialRuleForm.value = snapshotForm(ruleForm)
   showRuleForm.value = true
-}
-
-function closeRuleFromBackdrop() {
-  if (!shouldDismissOnBackdrop(initialRuleForm.value, ruleForm)) {
-    toast('已保留填写内容，请使用取消按钮关闭')
-    return
-  }
-  showRuleForm.value = false
 }
 
 function applyRule() {
@@ -298,7 +271,6 @@ const fwdRuleForm = reactive({
   name: '', keywords: '', from_contains: '', mailbox_ids: [],
   title_template: '', body_template: '', enabled: true, color: '#b0761c',
 })
-const initialFwdRuleForm = ref({})
 
 const vCode = '{{code}}'
 const vMailbox = '{{mailbox}}'
@@ -325,16 +297,7 @@ function openFwdRule(i = -1) {
       title_template: '', body_template: '', enabled: true, color: '#b0761c',
     })
   }
-  initialFwdRuleForm.value = snapshotForm(fwdRuleForm)
   showFwdForm.value = true
-}
-
-function closeFwdFromBackdrop() {
-  if (!shouldDismissOnBackdrop(initialFwdRuleForm.value, fwdRuleForm)) {
-    toast('已保留填写内容，请使用取消按钮关闭')
-    return
-  }
-  showFwdForm.value = false
 }
 
 function applyFwdRule() {
@@ -859,7 +822,7 @@ const vTrans = '{{translation}}'
           </section>
 
           <!-- 转发规则编辑弹窗 -->
-          <div v-if="showFwdForm" class="modal-backdrop" @click.self="closeFwdFromBackdrop">
+          <div v-if="showFwdForm" class="modal-backdrop">
             <div class="modal">
               <div class="modal-head">
                 <h3>{{ fwdIndex >= 0 ? '编辑转发规则' : '新建转发规则' }}</h3>
@@ -1037,7 +1000,7 @@ const vTrans = '{{translation}}'
     </div>
 
     <!-- 邮箱编辑弹窗 -->
-    <div v-if="showMbForm" class="modal-backdrop" @click.self="closeMbFromBackdrop">
+    <div v-if="showMbForm" class="modal-backdrop">
       <div class="modal">
         <div class="modal-head">
           <h3>{{ editingId ? '编辑邮箱' : '添加邮箱' }}</h3>
@@ -1138,7 +1101,7 @@ const vTrans = '{{translation}}'
     </div>
 
     <!-- 规则编辑弹窗 -->
-    <div v-if="showRuleForm" class="modal-backdrop" @click.self="closeRuleFromBackdrop">
+    <div v-if="showRuleForm" class="modal-backdrop">
       <div class="modal">
         <div class="modal-head">
           <h3>{{ ruleIndex >= 0 ? '编辑规则' : '新建规则' }}</h3>
