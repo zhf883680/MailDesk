@@ -57,6 +57,8 @@ type Email struct {
 	Flagged     bool         `json:"flagged"`
 	Size        uint32       `json:"size"`
 	Attachments []Attachment `json:"attachments,omitempty"`
+	BodyLoaded  bool         `json:"body_loaded,omitempty"`
+	bodyFetched bool
 
 	AIStatus       string       `json:"ai_status"` // off|pending|running|done|error
 	SubjectZh      string       `json:"subject_zh"`
@@ -281,6 +283,19 @@ func (s *Store) MailboxEmails(mb string) []*Email {
 	return out
 }
 
+// LoadedBodyUIDs 返回已有正文缓存的邮件，升级旧缓存时也能从既有内容识别。
+func (s *Store) LoadedBodyUIDs(mb string) map[uint32]bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := map[uint32]bool{}
+	for uid, e := range s.data[mb] {
+		if e.BodyLoaded || e.Text != "" || e.HTML != "" || e.Markdown != "" || len(e.Attachments) > 0 {
+			out[uid] = true
+		}
+	}
+	return out
+}
+
 func (s *Store) All() []*Email {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -385,9 +400,14 @@ func (s *Store) MergeFetched(mb string, fetched []*Email) (added, needAI []*Emai
 			if len(old.ForwardLog) > 0 {
 				e.ForwardLog = old.ForwardLog
 			}
-			if e.Text == "" && old.Text != "" {
+			if !e.bodyFetched {
 				e.Text = old.Text
 				e.HTML = old.HTML
+				e.Snippet = old.Snippet
+				e.Markdown = old.Markdown
+			}
+			if old.BodyLoaded || old.Text != "" || old.HTML != "" || old.Markdown != "" || len(old.Attachments) > 0 {
+				e.BodyLoaded = true
 			}
 			// 超大邮件不抓正文，新结果里没有附件元数据时沿用上次解析到的
 			if len(e.Attachments) == 0 && len(old.Attachments) > 0 {

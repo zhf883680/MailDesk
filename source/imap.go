@@ -87,6 +87,27 @@ func sendIMAPID(c *client.Client) {
 	_, _ = c.Execute(idCommand{}, ignoreHandler{})
 }
 
+const maxEmailBodySize = 3 * 1024 * 1024
+
+type mailboxHeader struct {
+	seq   uint32
+	uid   uint32
+	flags []string
+	size  uint32
+	env   *imap.Envelope
+}
+
+func messagesNeedingBody(headers []mailboxHeader, bodyLoaded map[uint32]bool) []mailboxHeader {
+	out := make([]mailboxHeader, 0, len(headers))
+	for _, h := range headers {
+		if h.size > maxEmailBodySize || bodyLoaded[h.uid] {
+			continue
+		}
+		out = append(out, h)
+	}
+	return out
+}
+
 // TestMailbox 测试 IMAP 与 SMTP 连通性
 func TestMailbox(mb Mailbox, pass string) error {
 	c, err := imapLogin(mb, pass)
@@ -104,7 +125,7 @@ func TestMailbox(mb Mailbox, pass string) error {
 }
 
 // fetchMailbox 拉取收件箱最近 limit 封邮件
-func fetchMailbox(mb Mailbox, pass string, limit int) ([]*Email, error) {
+func fetchMailbox(mb Mailbox, pass string, limit int, bodyLoaded map[uint32]bool) ([]*Email, error) {
 	if limit <= 0 {
 		limit = 40
 	}
@@ -130,14 +151,7 @@ func fetchMailbox(mb Mailbox, pass string, limit int) ([]*Email, error) {
 	seqset := new(imap.SeqSet)
 	seqset.AddRange(uint32(start), uint32(total))
 
-	type header struct {
-		seq   uint32
-		uid   uint32
-		flags []string
-		size  uint32
-		env   *imap.Envelope
-	}
-	var headers []header
+	var headers []mailboxHeader
 	ch := make(chan *imap.Message, 32)
 	done := make(chan error, 1)
 	go func() {
@@ -146,7 +160,7 @@ func fetchMailbox(mb Mailbox, pass string, limit int) ([]*Email, error) {
 		}, ch)
 	}()
 	for msg := range ch {
-		headers = append(headers, header{seq: msg.SeqNum, uid: msg.Uid, flags: msg.Flags, size: msg.Size, env: msg.Envelope})
+		headers = append(headers, mailboxHeader{seq: msg.SeqNum, uid: msg.Uid, flags: msg.Flags, size: msg.Size, env: msg.Envelope})
 	}
 	if err := <-done; err != nil {
 		return nil, fmt.Errorf("读取邮件头失败: %w", err)
@@ -154,12 +168,7 @@ func fetchMailbox(mb Mailbox, pass string, limit int) ([]*Email, error) {
 
 	// 第二遍：拉取正文（跳过超大邮件）
 	bodySet := new(imap.SeqSet)
-	index := map[uint32]int{}
-	for i, h := range headers {
-		index[h.seq] = i
-		if h.size > 0 && h.size > 3*1024*1024 {
-			continue
-		}
+	for _, h := range messagesNeedingBody(headers, bodyLoaded) {
 		bodySet.AddNum(h.seq)
 	}
 	bodies := map[uint32][]byte{}
@@ -188,13 +197,14 @@ func fetchMailbox(mb Mailbox, pass string, limit int) ([]*Email, error) {
 	out := make([]*Email, 0, len(headers))
 	for _, h := range headers {
 		e := &Email{
-			MailboxID: mb.ID,
-			UID:       h.uid,
-			Size:      h.size,
-			Seen:      hasFlag(h.flags, imap.SeenFlag),
-			Flagged:   hasFlag(h.flags, imap.FlaggedFlag),
-			To:        []Addr{},
-			CC:        []Addr{},
+			MailboxID:  mb.ID,
+			UID:        h.uid,
+			Size:       h.size,
+			Seen:       hasFlag(h.flags, imap.SeenFlag),
+			Flagged:    hasFlag(h.flags, imap.FlaggedFlag),
+			To:         []Addr{},
+			CC:         []Addr{},
+			BodyLoaded: bodyLoaded[h.uid],
 		}
 		e.ID = makeID(mb.ID, h.uid)
 		if h.env != nil {
@@ -216,6 +226,8 @@ func fetchMailbox(mb Mailbox, pass string, limit int) ([]*Email, error) {
 		}
 		if raw, ok := bodies[h.seq]; ok {
 			applyRawBody(e, raw)
+			e.BodyLoaded = true
+			e.bodyFetched = true
 		}
 		if e.Subject == "" {
 			e.Subject = "（无主题）"

@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+func TestMessagesNeedingBodySkipsLoadedAndOversizedMessages(t *testing.T) {
+	const maxBodySize = 3 * 1024 * 1024
+	headers := []mailboxHeader{
+		{seq: 1, uid: 11, size: 1024},
+		{seq: 2, uid: 12, size: 1024},
+		{seq: 3, uid: 13, size: maxBodySize + 1},
+		{seq: 4, uid: 14, size: 0},
+	}
+
+	got := messagesNeedingBody(headers, map[uint32]bool{11: true})
+	if len(got) != 2 || got[0].uid != 12 || got[1].uid != 14 {
+		t.Fatalf("unexpected messages selected for body download: %#v", got)
+	}
+}
+
 func TestApplyRawBodyDoesNotGenerateMarkdown(t *testing.T) {
 	raw := []byte(strings.Join([]string{
 		"From: Sender <sender@example.com>",

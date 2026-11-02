@@ -565,7 +565,8 @@ func (s *Server) syncMailbox(id string, force bool) {
 		log.Printf("[sync] skipped mailbox=%s reason=missing_password", id)
 		return
 	}
-	emails, err := fetchMailbox(mb, pass, cfg.FetchLimit)
+	bodyLoaded := s.st.LoadedBodyUIDs(id)
+	emails, err := fetchMailbox(mb, pass, cfg.FetchLimit, bodyLoaded)
 	if err != nil {
 		s.cm.SaveMailboxRuntime(id, time.Time{}, err.Error())
 		log.Printf("[sync] failed mailbox=%s error=%v", id, err)
