@@ -416,7 +416,8 @@ func (s *Store) MergeFetched(mb string, fetched []*Email) (added, needAI []*Emai
 			if e.AIStatus == "" {
 				e.AIStatus = "pending"
 			}
-			if e.AIStatus == "pending" || e.AIStatus == "running" || e.AIStatus == "error" {
+			// 失败邮件只允许用户手动重试，避免每次同步都把历史失败邮件重新送入 AI。
+			if e.AIStatus == "pending" || e.AIStatus == "running" {
 				needAI = append(needAI, e)
 			}
 		} else {

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 )
@@ -23,6 +24,7 @@ type AIService struct {
 	digestMu   sync.Mutex
 	digestAt   time.Time
 	digestText string
+	paused     atomic.Bool
 }
 
 func newAIService(cm *ConfigManager, st *Store) *AIService {
@@ -52,7 +54,7 @@ func (a *AIService) Start() {
 }
 
 func (a *AIService) Enqueue(id string) {
-	if id == "" {
+	if id == "" || a.paused.Load() {
 		return
 	}
 	if _, loaded := a.running.LoadOrStore(id, true); loaded {
@@ -62,6 +64,14 @@ func (a *AIService) Enqueue(id string) {
 	case a.queue <- id:
 	default:
 		a.running.Delete(id)
+	}
+}
+
+// ResumePending 在 AI 配置更新或用户手动重试后恢复后台队列。
+func (a *AIService) ResumePending() {
+	a.paused.Store(false)
+	for _, e := range a.st.PendingEmails() {
+		a.Enqueue(e.ID)
 	}
 }
 
@@ -90,6 +100,22 @@ type chatResponse struct {
 	} `json:"error"`
 }
 
+type aiUnavailableError struct {
+	err error
+}
+
+func (e *aiUnavailableError) Error() string { return e.err.Error() }
+func (e *aiUnavailableError) Unwrap() error { return e.err }
+
+func markAIUnavailable(err error) error {
+	return &aiUnavailableError{err: err}
+}
+
+func isAIUnavailable(err error) bool {
+	var target *aiUnavailableError
+	return errors.As(err, &target)
+}
+
 func endpointOf(base string) string {
 	b := strings.TrimSpace(base)
 	if b == "" {
@@ -104,10 +130,10 @@ func endpointOf(base string) string {
 
 func (a *AIService) chat(cfg AIConfig, system, user string, temperature float64) (string, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
-		return "", errors.New("尚未配置 AI API Key")
+		return "", markAIUnavailable(errors.New("尚未配置 AI API Key"))
 	}
 	if strings.TrimSpace(cfg.Model) == "" {
-		return "", errors.New("尚未配置 AI 模型名称")
+		return "", markAIUnavailable(errors.New("尚未配置 AI 模型名称"))
 	}
 	body, _ := json.Marshal(chatRequest{
 		Model: cfg.Model,
@@ -121,31 +147,31 @@ func (a *AIService) chat(cfg AIConfig, system, user string, temperature float64)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointOf(cfg.BaseURL), bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return "", markAIUnavailable(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("请求 AI 接口失败: %w", err)
+		return "", markAIUnavailable(fmt.Errorf("请求 AI 接口失败: %w", err))
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
 	if err != nil {
-		return "", err
+		return "", markAIUnavailable(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("AI 接口返回 %d: %s", resp.StatusCode, truncate(string(raw), 300))
+		return "", markAIUnavailable(fmt.Errorf("AI 接口返回 %d: %s", resp.StatusCode, truncate(string(raw), 300)))
 	}
 	var cr chatResponse
 	if err := json.Unmarshal(raw, &cr); err != nil {
-		return "", fmt.Errorf("AI 返回格式异常: %s", truncate(string(raw), 200))
+		return "", markAIUnavailable(fmt.Errorf("AI 返回格式异常: %s", truncate(string(raw), 200)))
 	}
 	if cr.Error != nil && cr.Error.Message != "" {
-		return "", errors.New(cr.Error.Message)
+		return "", markAIUnavailable(errors.New(cr.Error.Message))
 	}
 	if len(cr.Choices) == 0 {
-		return "", errors.New("AI 未返回内容")
+		return "", markAIUnavailable(errors.New("AI 未返回内容"))
 	}
 	return strings.TrimSpace(cr.Choices[0].Message.Content), nil
 }
@@ -200,6 +226,9 @@ JSON 字段：
 - "category": "工作" / "账单" / "通知" / "验证码" / "社交" / "营销" / "其他" 之一`
 
 func (a *AIService) process(id string) {
+	if a.paused.Load() {
+		return
+	}
 	email := a.st.Copy(id)
 	if email == nil {
 		return
@@ -224,11 +253,34 @@ func (a *AIService) process(id string) {
 		email.FromName, email.FromAddr, joinAddrs(email.To), email.Subject, email.Date.Format("2006-01-02 15:04"), body)
 
 	var firstErr error
+	finish := func(err error) {
+		a.st.Update(id, func(e *Email) {
+			e.AIAt = time.Now()
+			if err != nil {
+				e.AIStatus = "error"
+				e.AIError = truncate(err.Error(), 300)
+			} else {
+				e.AIStatus = "done"
+				e.AIError = ""
+			}
+		})
+	}
+	stop := func(err error) bool {
+		if !isAIUnavailable(err) {
+			return false
+		}
+		a.paused.Store(true)
+		finish(err)
+		return true
+	}
 
 	// 1. 翻译（auto 模式随流水线处理；manual 模式由用户在阅读页点击时触发）
 	if cfg.Translate && cfg.TranslateMode != "manual" && isProbablyEnglish(email.Subject+" "+translationSource(email)) {
 		if err := a.translateNow(email, cfg); err != nil && firstErr == nil {
 			firstErr = err
+			if stop(err) {
+				return
+			}
 		}
 	}
 
@@ -238,6 +290,9 @@ func (a *AIService) process(id string) {
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
+			}
+			if stop(err) {
+				return
 			}
 		} else {
 			var res struct {
@@ -282,6 +337,21 @@ func (a *AIService) process(id string) {
 			if firstErr == nil {
 				firstErr = err
 			}
+			if stop(err) {
+				a.st.Update(id, func(e *Email) {
+					replaced := false
+					for i := range e.RuleResults {
+						if e.RuleResults[i].RuleID == r.ID {
+							e.RuleResults[i] = rr
+							replaced = true
+						}
+					}
+					if !replaced {
+						e.RuleResults = append(e.RuleResults, rr)
+					}
+				})
+				return
+			}
 		} else {
 			rr.Content = out
 		}
@@ -299,19 +369,11 @@ func (a *AIService) process(id string) {
 		})
 	}
 
-	a.st.Update(id, func(e *Email) {
-		e.AIAt = time.Now()
-		if firstErr != nil {
-			e.AIStatus = "error"
-			e.AIError = truncate(firstErr.Error(), 300)
-		} else {
-			e.AIStatus = "done"
-			e.AIError = ""
-		}
-	})
+	finish(firstErr)
 }
 
 func (a *AIService) Reanalyze(id string) {
+	a.paused.Store(false)
 	a.st.Update(id, func(e *Email) {
 		e.AIStatus = "pending"
 		e.RuleResults = nil
@@ -332,12 +394,12 @@ func (a *AIService) Reanalyze(id string) {
 
 var translating sync.Map
 
-func (a *AIService) translateSubject(cfg AIConfig, subject string) string {
+func (a *AIService) translateSubject(cfg AIConfig, subject string) (string, error) {
 	out, err := a.chat(cfg, "把下面的邮件主题翻译成简体中文，只输出译文本身：", subject, 0.2)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return strings.TrimSpace(strings.Trim(out, "\"'“” \n"))
+	return strings.TrimSpace(strings.Trim(out, "\"'“” \n")), nil
 }
 
 // translationSource 优先提取 HTML 中的可见文字；没有 HTML 时才使用纯文本正文。
@@ -366,7 +428,10 @@ func (a *AIService) translateNow(email *Email, cfg AIConfig) error {
 		if !strings.Contains(out, "<") || text == "" {
 			return errors.New("AI 未返回可用的 HTML 译文")
 		}
-		subZh := a.translateSubject(cfg, email.Subject)
+		subZh, err := a.translateSubject(cfg, email.Subject)
+		if err != nil {
+			return err
+		}
 		a.st.Update(email.ID, func(e *Email) {
 			if subZh != "" {
 				e.SubjectZh = subZh
@@ -392,7 +457,10 @@ func (a *AIService) translateNow(email *Email, cfg AIConfig) error {
 	if out == "" {
 		return errors.New("AI 未返回译文")
 	}
-	subZh := a.translateSubject(cfg, email.Subject)
+	subZh, err := a.translateSubject(cfg, email.Subject)
+	if err != nil {
+		return err
+	}
 	a.st.Update(email.ID, func(e *Email) {
 		if subZh != "" {
 			e.SubjectZh = subZh

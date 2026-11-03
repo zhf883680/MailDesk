@@ -938,6 +938,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, parts []
 			fail(w, 500, err.Error())
 			return
 		}
+		s.ai.ResumePending()
 		ok(w, nil)
 	case "rules":
 		var in []Rule
@@ -1212,6 +1213,47 @@ func max(a, b int) int {
 
 // ---------- 定时同步 ----------
 
+const (
+	nightStartHour = 22
+	nightEndHour   = 8
+)
+
+func isNightTime(now time.Time) bool {
+	hour := now.Hour()
+	return hour >= nightStartHour || hour < nightEndHour
+}
+
+func backgroundSyncInterval(now time.Time, cfg *Config) time.Duration {
+	if isNightTime(now) {
+		return time.Hour
+	}
+	d := time.Duration(cfg.SyncMinutes) * time.Minute
+	// 白天启用关键词转发时至少每分钟检查一次，保证验证码能及时推送
+	if cfg.Forward.Enabled && d > time.Minute {
+		d = time.Minute
+	}
+	if d < time.Minute {
+		d = time.Minute
+	}
+	return d
+}
+
+func nextSyncPeriodBoundary(now time.Time) time.Time {
+	year, month, day := now.Date()
+	if isNightTime(now) {
+		return time.Date(year, month, day, nightEndHour, 0, 0, 0, now.Location())
+	}
+	return time.Date(year, month, day, nightStartHour, 0, 0, 0, now.Location())
+}
+
+func syncSleepDuration(now time.Time, cfg *Config) time.Duration {
+	d := backgroundSyncInterval(now, cfg)
+	if untilBoundary := nextSyncPeriodBoundary(now).Sub(now); untilBoundary > 0 && untilBoundary < d {
+		return untilBoundary
+	}
+	return d
+}
+
 func (s *Server) startBackgroundSync() {
 	go func() {
 		time.Sleep(3 * time.Second)
@@ -1219,16 +1261,14 @@ func (s *Server) startBackgroundSync() {
 	}()
 	for {
 		cfg := s.cm.Get()
-		d := time.Duration(cfg.SyncMinutes) * time.Minute
-		// 启用关键词转发时至少每分钟检查一次，保证验证码能及时推送
-		if cfg.Forward.Enabled && d > time.Minute {
-			d = time.Minute
+		timer := time.NewTimer(syncSleepDuration(time.Now(), cfg))
+		select {
+		case <-timer.C:
+			s.syncAll(false)
+		case <-s.cm.changed:
+			// 设置变更后立即用新间隔重新计时
 		}
-		if d < time.Minute {
-			d = time.Minute
-		}
-		time.Sleep(d)
-		s.syncAll(false)
+		timer.Stop()
 	}
 }
 
