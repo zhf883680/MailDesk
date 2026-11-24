@@ -261,6 +261,7 @@ type Stats struct {
 	NeedAction int                    `json:"need_action"`
 	Ads        int                    `json:"ads"`
 	PendingAI  int                    `json:"pending_ai"`
+	FailedAI   int                    `json:"ai_error"`
 	ByMailbox  map[string]MailboxStat `json:"by_mailbox"`
 	LastSync   time.Time              `json:"last_sync"`
 }
@@ -295,6 +296,9 @@ func (s *Server) stats() Stats {
 		st.ByMailbox[e.MailboxID] = ms
 		if e.AIStatus == "pending" || e.AIStatus == "running" {
 			st.PendingAI++
+		}
+		if e.AIStatus == "error" {
+			st.FailedAI++
 		}
 	}
 	for _, mb := range cfg.Mailboxes {
@@ -1068,8 +1072,123 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, parts []
 	}
 }
 
+// ---------- AI 队列 ----------
+
+type AIQueue struct {
+	Enabled bool           `json:"enabled"`
+	Paused  bool           `json:"paused"`
+	Counts  map[string]int `json:"counts"`
+	Items   []EmailSummary `json:"items"`
+}
+
+const aiQueueDoneLimit = 60
+
+// aiQueue 返回 AI 分析队列：失败的邮件排在最前，其次排队中，最后是最近完成的邮件，
+// 方便用户集中查看失败原因并重试。
+func (s *Server) aiQueue() AIQueue {
+	q := AIQueue{
+		Enabled: s.cm.Get().AI.Enabled,
+		Paused:  s.ai.Paused(),
+		Counts:  map[string]int{},
+	}
+	var failed, queued, done []EmailSummary
+	for _, e := range s.st.All() {
+		q.Counts[e.AIStatus]++
+		sum := e.ToSummary()
+		switch e.AIStatus {
+		case "error":
+			failed = append(failed, sum)
+		case "pending", "running":
+			queued = append(queued, sum)
+		case "done":
+			done = append(done, sum)
+		}
+	}
+	sort.SliceStable(failed, func(i, j int) bool { return failed[i].AIAt.After(failed[j].AIAt) })
+	sort.SliceStable(queued, func(i, j int) bool { return queued[i].Date.After(queued[j].Date) })
+	sort.SliceStable(done, func(i, j int) bool { return done[i].AIAt.After(done[j].AIAt) })
+	if len(done) > aiQueueDoneLimit {
+		done = done[:aiQueueDoneLimit]
+	}
+	q.Items = append(failed, queued...)
+	q.Items = append(q.Items, done...)
+	return q
+}
+
+// retryAIQueue 批量重新分析：按 ids 指定，或按 status 选择（error / pending / all）。
+func (s *Server) retryAIQueue(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		IDs    []string `json:"ids"`
+		Status string   `json:"status"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in) // body 可为空
+
+	target := map[string]bool{}
+	for _, id := range in.IDs {
+		if id = strings.TrimSpace(id); id != "" {
+			target[id] = true
+		}
+	}
+	if len(target) == 0 {
+		status := strings.TrimSpace(in.Status)
+		if status == "" {
+			status = "error"
+		}
+		for _, e := range s.st.All() {
+			match := false
+			switch status {
+			case "error":
+				match = e.AIStatus == "error"
+			case "pending":
+				match = e.AIStatus == "pending" || e.AIStatus == "running"
+			case "all":
+				match = e.AIStatus != "off"
+			default:
+				match = e.AIStatus == "error"
+			}
+			if match {
+				target[e.ID] = true
+			}
+		}
+	}
+
+	const maxRetry = 300
+	queued := 0
+	for id := range target {
+		if queued >= maxRetry {
+			break
+		}
+		if s.st.Get(id) == nil {
+			continue
+		}
+		s.ai.Reanalyze(id)
+		queued++
+	}
+	ok(w, map[string]interface{}{"queued": queued, "paused": s.ai.Paused()})
+}
+
 func (s *Server) handleAI(w http.ResponseWriter, r *http.Request, parts []string) {
-	if len(parts) < 2 || r.Method != http.MethodPost {
+	if len(parts) < 2 {
+		fail(w, 405, "方法不允许")
+		return
+	}
+	switch parts[1] {
+	case "queue":
+		if r.Method != http.MethodGet {
+			fail(w, 405, "方法不允许")
+			return
+		}
+		ok(w, s.aiQueue())
+		return
+	case "retry":
+		if r.Method != http.MethodPost {
+			fail(w, 405, "方法不允许")
+			return
+		}
+		s.retryAIQueue(w, r)
+		return
+	}
+	if r.Method != http.MethodPost {
 		fail(w, 405, "方法不允许")
 		return
 	}

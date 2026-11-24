@@ -2,7 +2,7 @@ import { reactive } from 'vue'
 import { api } from './api'
 
 const emptyStats = () => ({
-  total: 0, unread: 0, high: 0, need_action: 0, ads: 0, pending_ai: 0,
+  total: 0, unread: 0, high: 0, need_action: 0, ads: 0, pending_ai: 0, ai_error: 0,
   by_mailbox: {}, last_sync: null,
 })
 
@@ -154,6 +154,8 @@ export async function refreshData() {
   } else if (state.view === 'dashboard') {
     await loadEmails()
     if (state.ai.enabled) await loadDigest(false)
+  } else if (state.view === 'ai') {
+    window.dispatchEvent(new Event('maildesk:ai-refresh'))
   }
 }
 
@@ -173,6 +175,13 @@ export async function openMailbox(id, filter = 'all') {
   state.selected = null
   state.selectedId = null
   await loadEmails()
+}
+
+export function openAIQueue() {
+  state.view = 'ai'
+  state.selected = null
+  state.selectedId = null
+  state.sidebarOpen = false
 }
 
 export function setFilter(f) {

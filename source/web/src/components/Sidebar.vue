@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import Icon from './Icon.vue'
 import Logo from './Logo.vue'
-import { state, openMailbox, openCompose, logout, syncAll } from '../store'
+import { state, openMailbox, openCompose, logout, syncAll, openAIQueue } from '../store'
 
 const emit = defineEmits(['open-settings'])
 
@@ -13,6 +13,7 @@ const nav = computed(() => ([
   { key: 'all', label: '全部邮件', icon: 'inbox', count: state.stats.total },
   { key: 'action', label: '待处理', icon: 'check', count: state.stats.need_action },
   { key: 'star', label: '重要', icon: 'star', count: state.stats.high },
+  { key: 'ai', label: 'AI 队列', icon: 'sparkles', count: (state.stats.ai_error || 0) + (state.stats.pending_ai || 0) },
 ]))
 
 function go(key) {
@@ -25,6 +26,7 @@ function go(key) {
   if (key === 'all') return openMailbox('all')
   if (key === 'action') return openMailbox('all', 'action')
   if (key === 'star') return openMailbox('all', 'important')
+  if (key === 'ai') return openAIQueue()
 }
 
 function mailbox(id) {
@@ -37,6 +39,7 @@ function isActive(key) {
   if (key === 'all') return state.view === 'mailbox' && state.mailboxId === 'all' && state.filter === 'all'
   if (key === 'action') return state.view === 'mailbox' && state.filter === 'action'
   if (key === 'star') return state.view === 'mailbox' && state.filter === 'important'
+  if (key === 'ai') return state.view === 'ai'
   return false
 }
 

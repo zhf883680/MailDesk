@@ -71,6 +71,8 @@ export const api = {
   saveSecurity: (data) => request('settings/security', { method: 'PUT', body: data }),
   testAI: (data) => request('ai/test', { method: 'POST', body: data }),
   polish: (data) => request('ai/polish', { method: 'POST', body: data }),
+  aiQueue: () => request('ai/queue'),
+  aiRetry: (data) => request('ai/retry', { method: 'POST', body: data || {} }),
   digest: (force) => request('digest' + (force ? '?force=1' : ''), { method: force ? 'POST' : 'GET' }),
 
   // 附件下载：request() 只会解析 JSON，这里单独取二进制，

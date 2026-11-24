@@ -95,6 +95,8 @@ type EmailSummary struct {
 	Seen       bool      `json:"seen"`
 	Flagged    bool      `json:"flagged"`
 	AIStatus   string    `json:"ai_status"`
+	AIError    string    `json:"ai_error"`
+	AIAt       time.Time `json:"ai_at"`
 	Summary    string    `json:"summary"`
 	Importance string    `json:"importance"`
 	NeedAction bool      `json:"need_action"`
@@ -133,7 +135,7 @@ func (e *Email) ToSummary() EmailSummary {
 	return EmailSummary{
 		ID: e.ID, MailboxID: e.MailboxID, Subject: e.Subject, SubjectZh: sanitizeSubjectZh(e.SubjectZh), FromName: e.FromName,
 		FromAddr: e.FromAddr, Date: e.Date, Snippet: e.Snippet, Seen: e.Seen,
-		Flagged: e.Flagged, AIStatus: e.AIStatus, Summary: sanitizeSummary(e.Summary),
+		Flagged: e.Flagged, AIStatus: e.AIStatus, AIError: e.AIError, AIAt: e.AIAt, Summary: sanitizeSummary(e.Summary),
 		Importance: e.Importance, NeedAction: e.EffectiveNeedAction(), IsAd: e.EffectiveIsAd(),
 		Category: e.Category, HasTrans: e.Translated != "" || e.TranslatedHTML != "" || e.TranslatedMD != "", RuleCount: len(e.RuleResults),
 		Forwarded: e.Forwarded, Handled: e.Handled, AdIgnored: e.EffectiveAdIgnored(),

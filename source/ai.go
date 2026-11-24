@@ -76,6 +76,9 @@ func (a *AIService) ResumePending() {
 	}
 }
 
+// Paused 表示后台队列因 AI 接口连续失败而暂停，需要重试或更新配置后恢复。
+func (a *AIService) Paused() bool { return a.paused.Load() }
+
 // ---------- OpenAI 兼容客户端 ----------
 
 type chatMessage struct {

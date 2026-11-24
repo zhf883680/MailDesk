@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar.vue'
 import MailList from './components/MailList.vue'
 import MailReader from './components/MailReader.vue'
 import DashboardView from './components/DashboardView.vue'
+import AIQueueView from './components/AIQueueView.vue'
 import SettingsView from './components/SettingsView.vue'
 import ComposeModal from './components/ComposeModal.vue'
 import Icon from './components/Icon.vue'
@@ -205,6 +206,16 @@ function onPageShow(e) {
           <button class="icon-btn" aria-label="设置" @click="openSettings('ai')"><Icon name="settings" :size="20" /></button>
         </div>
         <DashboardView @open-settings="openSettings" />
+      </div>
+      <div v-else-if="state.view === 'ai'" class="content-pane">
+        <div class="m-topbar">
+          <button class="icon-btn" @click="state.sidebarOpen = true" aria-label="菜单"><Icon name="menu" :size="21" /></button>
+          <div class="m-brand"><Logo :size="24" /><span>AI 队列</span></div>
+          <div class="grow"></div>
+          <button class="icon-btn" aria-label="刷新" @click="manualRefresh"><Icon name="refresh" :size="19" :class="{ spin: refreshing }" /></button>
+          <button class="icon-btn" aria-label="设置" @click="openSettings('ai')"><Icon name="settings" :size="20" /></button>
+        </div>
+        <AIQueueView />
       </div>
       <div v-else-if="state.view === 'settings'" class="content-pane">
         <SettingsView :initial-tab="state.settingsTab" />
