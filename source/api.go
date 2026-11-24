@@ -1081,17 +1081,20 @@ type AIQueue struct {
 	Items   []EmailSummary `json:"items"`
 }
 
-const aiQueueDoneLimit = 60
+const (
+	aiQueueDoneLimit    = 60
+	aiQueueIgnoredLimit = 60
+)
 
-// aiQueue 返回 AI 分析队列：失败的邮件排在最前，其次排队中，最后是最近完成的邮件，
-// 方便用户集中查看失败原因并重试。
+// aiQueue 返回 AI 分析队列：失败的邮件排在最前，其次排队中，然后是最近完成与
+// 已忽略的邮件，方便用户集中查看失败原因、重试或忽略。
 func (s *Server) aiQueue() AIQueue {
 	q := AIQueue{
 		Enabled: s.cm.Get().AI.Enabled,
 		Paused:  s.ai.Paused(),
 		Counts:  map[string]int{},
 	}
-	var failed, queued, done []EmailSummary
+	var failed, queued, done, ignored []EmailSummary
 	for _, e := range s.st.All() {
 		q.Counts[e.AIStatus]++
 		sum := e.ToSummary()
@@ -1102,16 +1105,23 @@ func (s *Server) aiQueue() AIQueue {
 			queued = append(queued, sum)
 		case "done":
 			done = append(done, sum)
+		case "ignored":
+			ignored = append(ignored, sum)
 		}
 	}
 	sort.SliceStable(failed, func(i, j int) bool { return failed[i].AIAt.After(failed[j].AIAt) })
 	sort.SliceStable(queued, func(i, j int) bool { return queued[i].Date.After(queued[j].Date) })
 	sort.SliceStable(done, func(i, j int) bool { return done[i].AIAt.After(done[j].AIAt) })
+	sort.SliceStable(ignored, func(i, j int) bool { return ignored[i].AIAt.After(ignored[j].AIAt) })
 	if len(done) > aiQueueDoneLimit {
 		done = done[:aiQueueDoneLimit]
 	}
+	if len(ignored) > aiQueueIgnoredLimit {
+		ignored = ignored[:aiQueueIgnoredLimit]
+	}
 	q.Items = append(failed, queued...)
 	q.Items = append(q.Items, done...)
+	q.Items = append(q.Items, ignored...)
 	return q
 }
 
@@ -1142,7 +1152,7 @@ func (s *Server) retryAIQueue(w http.ResponseWriter, r *http.Request) {
 			case "pending":
 				match = e.AIStatus == "pending" || e.AIStatus == "running"
 			case "all":
-				match = e.AIStatus != "off"
+				match = e.AIStatus != "off" && e.AIStatus != "ignored"
 			default:
 				match = e.AIStatus == "error"
 			}
@@ -1167,6 +1177,49 @@ func (s *Server) retryAIQueue(w http.ResponseWriter, r *http.Request) {
 	ok(w, map[string]interface{}{"queued": queued, "paused": s.ai.Paused()})
 }
 
+// ignoreAIQueue 忽略失败的邮件：不再计入失败统计，也不会随同步自动重试。
+// 适合纯图片等没有可分析文本、重试也没有意义的邮件；之后仍可手动重新分析。
+func (s *Server) ignoreAIQueue(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		IDs    []string `json:"ids"`
+		Status string   `json:"status"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in) // body 可为空，默认忽略全部失败邮件
+
+	target := map[string]bool{}
+	for _, id := range in.IDs {
+		if id = strings.TrimSpace(id); id != "" {
+			target[id] = true
+		}
+	}
+	if len(target) == 0 {
+		status := strings.TrimSpace(in.Status)
+		if status != "" && status != "error" {
+			fail(w, 400, "只支持忽略失败的邮件")
+			return
+		}
+		for _, e := range s.st.All() {
+			if e.AIStatus == "error" {
+				target[e.ID] = true
+			}
+		}
+	}
+
+	ignored := 0
+	for id := range target {
+		e := s.st.Get(id)
+		if e == nil || e.AIStatus != "error" {
+			continue
+		}
+		s.st.Update(id, func(e *Email) {
+			e.AIStatus = "ignored"
+			e.AIAt = time.Now()
+		})
+		ignored++
+	}
+	ok(w, map[string]interface{}{"ignored": ignored})
+}
+
 func (s *Server) handleAI(w http.ResponseWriter, r *http.Request, parts []string) {
 	if len(parts) < 2 {
 		fail(w, 405, "方法不允许")
@@ -1186,6 +1239,13 @@ func (s *Server) handleAI(w http.ResponseWriter, r *http.Request, parts []string
 			return
 		}
 		s.retryAIQueue(w, r)
+		return
+	case "ignore":
+		if r.Method != http.MethodPost {
+			fail(w, 405, "方法不允许")
+			return
+		}
+		s.ignoreAIQueue(w, r)
 		return
 	}
 	if r.Method != http.MethodPost {

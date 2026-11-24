@@ -816,6 +816,7 @@ a { color: var(--accent); text-decoration: none; }
 .aiq-row.st-error .aiq-status { background: var(--red-soft); color: var(--red); }
 .aiq-row.st-pending .aiq-status, .aiq-row.st-running .aiq-status { background: var(--amber-soft); color: var(--amber); }
 .aiq-row.st-done .aiq-status { background: var(--accent-soft); color: var(--accent-ink); }
+.aiq-row.st-ignored .aiq-status { background: #efece6; color: #8d8477; }
 .aiq-main { flex: 1; min-width: 0; }
 .aiq-top { display: flex; align-items: baseline; gap: 12px; }
 .aiq-subject {
@@ -836,6 +837,8 @@ a { color: var(--accent); text-decoration: none; }
 .aiq-row.st-error .aiq-state { background: var(--red-soft); color: var(--red); }
 .aiq-row.st-pending .aiq-state, .aiq-row.st-running .aiq-state { background: var(--amber-soft); color: var(--amber); }
 .aiq-row.st-done .aiq-state { background: var(--accent-soft); color: var(--accent-ink); }
+.aiq-row.st-ignored .aiq-state { background: #efece6; color: #8d8477; }
+.aiq-row.st-ignored .aiq-subject { color: var(--muted); font-weight: 500; }
 .aiq-summary {
   flex-basis: 100%; font-size: 11.5px; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -852,6 +855,7 @@ a { color: var(--accent); text-decoration: none; }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .aiq-error.open .aiq-error-text { display: block; -webkit-line-clamp: unset; }
+.aiq-row.st-ignored .aiq-error { background: var(--surface-2); color: var(--muted); }
 .aiq-more {
   flex: 0 0 auto; font-size: 11px; color: var(--red);
   text-decoration: underline; text-underline-offset: 2px; padding: 0;

@@ -73,6 +73,7 @@ export const api = {
   polish: (data) => request('ai/polish', { method: 'POST', body: data }),
   aiQueue: () => request('ai/queue'),
   aiRetry: (data) => request('ai/retry', { method: 'POST', body: data || {} }),
+  aiIgnore: (data) => request('ai/ignore', { method: 'POST', body: data || {} }),
   digest: (force) => request('digest' + (force ? '?force=1' : ''), { method: force ? 'POST' : 'GET' }),
 
   // 附件下载：request() 只会解析 JSON，这里单独取二进制，

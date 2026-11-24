@@ -60,19 +60,20 @@ type Email struct {
 	BodyLoaded  bool         `json:"body_loaded,omitempty"`
 	bodyFetched bool
 
-	AIStatus       string       `json:"ai_status"` // off|pending|running|done|error
-	SubjectZh      string       `json:"subject_zh"`
-	Translated     string       `json:"translated"`
-	TranslatedHTML string       `json:"translated_html,omitempty"`
-	TranslatedMD   string       `json:"translated_md,omitempty"`
-	Summary        string       `json:"summary"`
-	Importance     string       `json:"importance"` // high|medium|low
-	NeedAction     bool         `json:"need_action"`
-	IsAd           bool         `json:"is_ad"`
-	Category       string       `json:"category"`
-	RuleResults    []RuleResult `json:"rule_results"`
-	AIAt           time.Time    `json:"ai_at"`
-	AIError        string       `json:"ai_error"`
+	AIStatus         string       `json:"ai_status"` // off|pending|running|done|error|ignored
+	SubjectZh        string       `json:"subject_zh"`
+	Translated       string       `json:"translated"`
+	TranslatedHTML   string       `json:"translated_html,omitempty"`
+	TranslatedMD     string       `json:"translated_md,omitempty"`
+	Summary          string       `json:"summary"`
+	Importance       string       `json:"importance"` // high|medium|low
+	NeedAction       bool         `json:"need_action"`
+	IsAd             bool         `json:"is_ad"`
+	Category         string       `json:"category"`
+	RuleResults      []RuleResult `json:"rule_results"`
+	AIAt             time.Time    `json:"ai_at"`
+	AIError          string       `json:"ai_error"`
+	AITimeoutRetries int          `json:"ai_timeout_retries,omitempty"` // 因接口超时自动重试的次数，避免无限重试
 
 	Handled      bool         `json:"handled"`
 	AdOverride   string       `json:"ad_override,omitempty"` // not_ad | ad | ""
@@ -396,6 +397,7 @@ func (s *Store) MergeFetched(mb string, fetched []*Email) (added, needAI []*Emai
 			e.RuleResults = old.RuleResults
 			e.AIAt = old.AIAt
 			e.AIError = old.AIError
+			e.AITimeoutRetries = old.AITimeoutRetries
 			e.Flagged = old.Flagged
 			e.Forwarded = old.Forwarded
 			e.Notified = old.Notified

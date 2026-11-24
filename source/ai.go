@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -118,6 +119,21 @@ func markAIUnavailable(err error) error {
 func isAIUnavailable(err error) bool {
 	var target *aiUnavailableError
 	return errors.As(err, &target)
+}
+
+// aiTimeoutRetryDelay 是接口超时后自动重试前的等待时间。
+var aiTimeoutRetryDelay = 3 * time.Minute
+
+// isTimeoutError 判断错误是否来自请求超时（可能是连接超时或响应超时）。
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
 }
 
 func endpointOf(base string) string {
@@ -328,6 +344,7 @@ func (a *AIService) process(id string) {
 	finish := func(err error) {
 		a.st.Update(id, func(e *Email) {
 			e.AIAt = time.Now()
+			e.AITimeoutRetries = 0
 			if err != nil {
 				e.AIStatus = "error"
 				e.AIError = truncate(err.Error(), 300)
@@ -338,6 +355,15 @@ func (a *AIService) process(id string) {
 		})
 	}
 	stop := func(err error) bool {
+		// 超时通常是网络抖动或模型繁忙导致的，直接判失败会留下大量无法自动恢复的
+		// 失败记录。这里先回到排队状态，等待几分钟后自动重试一次。
+		if isTimeoutError(err) {
+			if a.retryAfterTimeout(id) {
+				return true
+			}
+			finish(err)
+			return true
+		}
 		if !isAIUnavailable(err) {
 			return false
 		}
@@ -451,6 +477,8 @@ func (a *AIService) Reanalyze(id string) {
 	a.paused.Store(false)
 	a.st.Update(id, func(e *Email) {
 		e.AIStatus = "pending"
+		e.AIError = ""
+		e.AITimeoutRetries = 0
 		e.RuleResults = nil
 		e.Translated = ""
 		e.TranslatedHTML = ""
@@ -463,6 +491,26 @@ func (a *AIService) Reanalyze(id string) {
 		e.Category = ""
 	})
 	a.Enqueue(id)
+}
+
+// retryAfterTimeout 遇到接口超时先不判失败：每封邮件只自动重试一次，
+// 等待 aiTimeoutRetryDelay 后重新入队。返回 false 表示已经用掉了自动重试机会。
+func (a *AIService) retryAfterTimeout(id string) bool {
+	retry := false
+	a.st.Update(id, func(e *Email) {
+		if e.AITimeoutRetries >= 1 {
+			return
+		}
+		e.AITimeoutRetries++
+		e.AIStatus = "pending"
+		e.AIError = ""
+		retry = true
+	})
+	if !retry {
+		return false
+	}
+	time.AfterFunc(aiTimeoutRetryDelay, func() { a.Enqueue(id) })
+	return true
 }
 
 // ---------- 纯文本翻译 ----------

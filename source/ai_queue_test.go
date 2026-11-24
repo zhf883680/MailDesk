@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -80,5 +83,110 @@ func TestStatsCountsFailedAI(t *testing.T) {
 	st.Upsert(&Email{ID: "mb:2", MailboxID: "mb", UID: 2, AIStatus: "pending"})
 	if got := s.stats().FailedAI; got != 1 {
 		t.Fatalf("stats ai_error = %d, want 1", got)
+	}
+}
+
+func postAI(t *testing.T, s *Server, path, body string, fn func(http.ResponseWriter, *http.Request)) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	fn(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s status = %d, body = %s", path, rec.Code, rec.Body.String())
+	}
+	return rec
+}
+
+func TestAIQueueIgnoreOnlyAffectsFailures(t *testing.T) {
+	s, st := testAIQueueServer(t)
+	st.Upsert(&Email{ID: "mb:1", MailboxID: "mb", UID: 1, AIStatus: "error", AIError: "pure image"})
+	st.Upsert(&Email{ID: "mb:2", MailboxID: "mb", UID: 2, AIStatus: "pending"})
+
+	rec := postAI(t, s, "/api/ai/ignore", `{"ids":["mb:1","mb:2"]}`, s.ignoreAIQueue)
+	var response struct {
+		Data struct {
+			Ignored int `json:"ignored"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if response.Data.Ignored != 1 {
+		t.Fatalf("ignored = %d, want 1", response.Data.Ignored)
+	}
+	if got := st.Get("mb:1").AIStatus; got != "ignored" {
+		t.Fatalf("failed email status = %q, want ignored", got)
+	}
+	if got := st.Get("mb:2").AIStatus; got != "pending" {
+		t.Fatalf("pending email status = %q, want untouched", got)
+	}
+
+	q := s.aiQueue()
+	if q.Counts["error"] != 0 || q.Counts["ignored"] != 1 {
+		t.Fatalf("counts = %#v", q.Counts)
+	}
+	for _, item := range q.Items {
+		if item.AIStatus == "error" {
+			t.Fatalf("ignored email still reported as failure: %#v", item)
+		}
+	}
+	if got := s.stats().FailedAI; got != 0 {
+		t.Fatalf("stats ai_error = %d, want 0 after ignoring", got)
+	}
+}
+
+func TestAIQueueIgnoreAllFailures(t *testing.T) {
+	s, st := testAIQueueServer(t)
+	st.Upsert(&Email{ID: "mb:1", MailboxID: "mb", UID: 1, AIStatus: "error"})
+	st.Upsert(&Email{ID: "mb:2", MailboxID: "mb", UID: 2, AIStatus: "error"})
+	st.Upsert(&Email{ID: "mb:3", MailboxID: "mb", UID: 3, AIStatus: "done"})
+
+	postAI(t, s, "/api/ai/ignore", "", s.ignoreAIQueue)
+	for _, id := range []string{"mb:1", "mb:2"} {
+		if got := st.Get(id).AIStatus; got != "ignored" {
+			t.Fatalf("%s status = %q, want ignored", id, got)
+		}
+	}
+	if got := st.Get("mb:3").AIStatus; got != "done" {
+		t.Fatalf("done email status = %q, want untouched", got)
+	}
+}
+
+func TestRetryAllSkipsIgnored(t *testing.T) {
+	s, st := testAIQueueServer(t)
+	st.Upsert(&Email{ID: "mb:1", MailboxID: "mb", UID: 1, AIStatus: "ignored"})
+
+	postAI(t, s, "/api/ai/retry", `{"status":"all"}`, s.retryAIQueue)
+	if got := st.Get("mb:1").AIStatus; got != "ignored" {
+		t.Fatalf("ignored email status = %q, want kept ignored", got)
+	}
+}
+
+func TestIsTimeoutError(t *testing.T) {
+	timeout := &aiUnavailableError{err: &url.Error{Op: "Post", URL: "http://x", Err: context.DeadlineExceeded}}
+	if !isTimeoutError(timeout) {
+		t.Fatal("wrapped context deadline should be a timeout")
+	}
+	if isTimeoutError(errors.New("boom")) {
+		t.Fatal("plain error should not be a timeout")
+	}
+}
+
+func TestTimeoutRetryOnlyOnce(t *testing.T) {
+	s, st := testAIQueueServer(t)
+	st.Upsert(&Email{ID: "mb:1", MailboxID: "mb", UID: 1, AIStatus: "running"})
+
+	if !s.ai.retryAfterTimeout("mb:1") {
+		t.Fatal("first timeout should schedule a retry")
+	}
+	e := st.Get("mb:1")
+	if e.AIStatus != "pending" || e.AITimeoutRetries != 1 {
+		t.Fatalf("status = %q, retries = %d, want pending/1", e.AIStatus, e.AITimeoutRetries)
+	}
+	if e.AIError != "" {
+		t.Fatalf("ai_error should stay empty while waiting to retry: %q", e.AIError)
+	}
+	if s.ai.retryAfterTimeout("mb:1") {
+		t.Fatal("second timeout should not schedule another retry")
 	}
 }

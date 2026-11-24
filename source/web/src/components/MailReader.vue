@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import Icon from './Icon.vue'
 import {
   state, toggleStar, setSeen, removeSelected, reanalyze, replyToSelected, toast, setHandled, setAdOverride,
-  setAdIgnored,
+  setAdIgnored, reloadStats,
 } from '../store'
 import { api } from '../api'
 import { fmtFull, fmtTime, fmtSize, importanceLabel, renderMarkdownish, senderAvatar, hasTranslation, initialBodyView, plainBodyKind } from '../utils'
@@ -54,6 +54,21 @@ const lastForward = computed(() => {
   return logs.length ? logs[logs.length - 1] : null
 })
 const forwarding = ref(false)
+
+async function ignoreAI() {
+  if (!mail.value) return
+  const id = mail.value.id
+  try {
+    await api.aiIgnore({ ids: [id] })
+    if (state.selected?.id === id) state.selected.ai_status = 'ignored'
+    const item = state.emails.find((x) => x.id === id)
+    if (item) item.ai_status = 'ignored'
+    await reloadStats()
+    toast('已忽略该邮件的 AI 分析')
+  } catch (e) {
+    toast(e.message, 'err')
+  }
+}
 
 async function retryForward() {
   if (!mail.value) return
@@ -243,6 +258,15 @@ function toList() {
           <div>
             AI 处理失败：{{ mail.ai_error || '未知错误' }}
             <button class="btn btn-sm" style="margin-left: 8px" @click="reanalyze">重试</button>
+            <button class="btn btn-sm" style="margin-left: 6px" @click="ignoreAI">忽略</button>
+          </div>
+        </div>
+
+        <div v-else-if="mail.ai_status === 'ignored'" class="ai-error">
+          <Icon name="eyeOff" :size="14" />
+          <div>
+            已忽略该邮件的 AI 分析。
+            <button class="btn btn-sm" style="margin-left: 8px" @click="reanalyze">重新分析</button>
           </div>
         </div>
 

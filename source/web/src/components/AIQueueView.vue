@@ -12,29 +12,34 @@ const paused = ref(false)
 const enabled = ref(true)
 const tab = ref('error')
 const retryingAll = ref(false)
+const ignoringAll = ref(false)
 const retryBusy = ref({})
+const ignoreBusy = ref({})
 const expanded = ref({})
 let timer = null
 
 const errorCount = computed(() => counts.value.error || 0)
 const queueCount = computed(() => (counts.value.pending || 0) + (counts.value.running || 0))
 const doneCount = computed(() => items.value.filter((e) => e.ai_status === 'done').length)
+const ignoredCount = computed(() => counts.value.ignored || 0)
 
 const tabs = computed(() => ([
   { key: 'error', label: '失败', n: errorCount.value },
   { key: 'queue', label: '排队中', n: queueCount.value },
   { key: 'done', label: '最近完成', n: doneCount.value },
+  { key: 'ignored', label: '已忽略', n: ignoredCount.value },
 ]))
 
 const visible = computed(() => {
   if (tab.value === 'error') return items.value.filter((e) => e.ai_status === 'error')
   if (tab.value === 'queue') return items.value.filter((e) => e.ai_status === 'pending' || e.ai_status === 'running')
+  if (tab.value === 'ignored') return items.value.filter((e) => e.ai_status === 'ignored')
   return items.value.filter((e) => e.ai_status === 'done')
 })
 
 const retryLabel = computed(() => {
   if (tab.value === 'queue') return '重新排队'
-  if (tab.value === 'done') return '全部重新分析'
+  if (tab.value === 'done' || tab.value === 'ignored') return '全部重新分析'
   return '重试全部失败'
 })
 
@@ -75,11 +80,13 @@ async function retryOne(mail) {
   retryBusy.value = { ...retryBusy.value, [mail.id]: true }
   try {
     await api.aiRetry({ ids: [mail.id] })
+    const prev = mail.ai_status
     mail.ai_status = 'pending'
     mail.ai_error = ''
     counts.value = {
       ...counts.value,
-      error: Math.max(0, errorCount.value - 1),
+      error: prev === 'error' ? Math.max(0, errorCount.value - 1) : errorCount.value,
+      ignored: prev === 'ignored' ? Math.max(0, ignoredCount.value - 1) : (counts.value.ignored || 0),
       pending: (counts.value.pending || 0) + 1,
     }
     tab.value = 'queue'
@@ -112,6 +119,46 @@ async function retryAll() {
   }
 }
 
+function withoutItem(list, id) {
+  return list.filter((e) => e.id !== id)
+}
+
+async function ignoreOne(mail) {
+  if (ignoreBusy.value[mail.id]) return
+  ignoreBusy.value = { ...ignoreBusy.value, [mail.id]: true }
+  try {
+    await api.aiIgnore({ ids: [mail.id] })
+    items.value = withoutItem(items.value, mail.id)
+    counts.value = {
+      ...counts.value,
+      error: Math.max(0, errorCount.value - 1),
+      ignored: (counts.value.ignored || 0) + 1,
+    }
+    await reloadStats()
+    toast('已忽略该邮件，可在「已忽略」中恢复')
+  } catch (e) {
+    toast(e.message, 'err')
+  } finally {
+    const next = { ...ignoreBusy.value }
+    delete next[mail.id]
+    ignoreBusy.value = next
+  }
+}
+
+async function ignoreAll() {
+  if (ignoringAll.value || !visible.value.length) return
+  ignoringAll.value = true
+  try {
+    const r = await api.aiIgnore({ status: 'error' })
+    toast(`已忽略 ${r.ignored} 封失败邮件`)
+    await Promise.all([load(true), reloadStats()])
+  } catch (e) {
+    toast(e.message, 'err')
+  } finally {
+    ignoringAll.value = false
+  }
+}
+
 function toggle(mail) {
   expanded.value = { ...expanded.value, [mail.id]: !expanded.value[mail.id] }
 }
@@ -128,6 +175,7 @@ function statusIcon(status) {
   if (status === 'error') return 'alert'
   if (status === 'running') return 'refresh'
   if (status === 'pending') return 'clock'
+  if (status === 'ignored') return 'eyeOff'
   return 'check'
 }
 
@@ -135,6 +183,7 @@ function statusText(status) {
   if (status === 'error') return '失败'
   if (status === 'running') return '分析中'
   if (status === 'pending') return '排队中'
+  if (status === 'ignored') return '已忽略'
   return '已完成'
 }
 
@@ -169,6 +218,15 @@ onBeforeUnmount(() => {
           <Icon name="refresh" :size="14" :class="{ spin: loading }" /> 刷新
         </button>
         <button
+          v-if="tab === 'error'"
+          class="btn"
+          :disabled="ignoringAll || !visible.length"
+          title="忽略所有失败的邮件，之后可在「已忽略」里恢复"
+          @click="ignoreAll"
+        >
+          <Icon name="eyeOff" :size="14" :class="{ spin: ignoringAll }" /> 忽略全部
+        </button>
+        <button
           class="btn btn-primary"
           :disabled="retryingAll || !visible.length"
           @click="retryAll"
@@ -197,6 +255,11 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
+    <div v-if="tab === 'error' && visible.length" class="aiq-note">
+      <Icon name="alert" :size="14" />
+      纯图片或没有正文的邮件重试通常没有意义，可以直接忽略；忽略后仍可在「已忽略」里重新分析。
+    </div>
+
     <div v-if="loading && !items.length" class="panel">
       <div v-for="i in 5" :key="i" style="padding: 14px 0; border-bottom: 1px solid var(--line)">
         <div class="skeleton" style="height: 13px; width: 60%; margin-bottom: 9px"></div>
@@ -205,14 +268,18 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-else-if="!visible.length" class="panel aiq-empty">
-      <Icon :name="tab === 'error' ? 'check' : tab === 'queue' ? 'clock' : 'sparkles'" :size="34" :stroke="1.3" />
-      <h3>{{ tab === 'error' ? '没有失败的邮件' : tab === 'queue' ? '队列是空的' : '还没有完成的记录' }}</h3>
+      <Icon :name="tab === 'error' ? 'check' : tab === 'queue' ? 'clock' : tab === 'ignored' ? 'eyeOff' : 'sparkles'" :size="34" :stroke="1.3" />
+      <h3>
+        {{ tab === 'error' ? '没有失败的邮件' : tab === 'queue' ? '队列是空的' : tab === 'ignored' ? '没有忽略的邮件' : '还没有完成的记录' }}
+      </h3>
       <p>
         {{ tab === 'error'
           ? 'AI 处理失败的邮件会出现在这里，并附带错误原因。'
           : tab === 'queue'
             ? '新邮件进入后会自动排队分析，这里可以看到实时进度。'
-            : '最近 60 封完成 AI 分析的邮件会显示在这里。' }}
+            : tab === 'ignored'
+              ? '纯图片等没有可分析内容的失败邮件可以忽略，这里可以随时恢复重新分析。'
+              : '最近 60 封完成 AI 分析的邮件会显示在这里。' }}
       </p>
     </div>
 
@@ -238,10 +305,10 @@ onBeforeUnmount(() => {
             <span v-if="mail.summary" class="aiq-summary">{{ mail.summary }}</span>
           </div>
           <div
-            v-if="mail.ai_status === 'error'"
+            v-if="mail.ai_status === 'error' || mail.ai_status === 'ignored'"
             class="aiq-error" :class="{ open: expanded[mail.id] }"
           >
-            <Icon name="alert" :size="12" />
+            <Icon :name="mail.ai_status === 'ignored' ? 'eyeOff' : 'alert'" :size="12" />
             <span class="aiq-error-text">{{ mail.ai_error || '未知错误' }}</span>
             <button
               v-if="(mail.ai_error || '').length > 56"
@@ -260,6 +327,15 @@ onBeforeUnmount(() => {
           >
             <Icon name="refresh" :size="12" :class="{ spin: retryBusy[mail.id] }" />
             {{ mail.ai_status === 'error' ? '重试' : '重新分析' }}
+          </button>
+          <button
+            v-if="mail.ai_status === 'error'"
+            class="btn btn-sm"
+            :disabled="ignoreBusy[mail.id]"
+            title="忽略这封邮件，不再计入失败"
+            @click.stop="ignoreOne(mail)"
+          >
+            <Icon name="eyeOff" :size="12" /> 忽略
           </button>
           <button class="icon-btn" title="打开邮件" @click.stop="open(mail)">
             <Icon name="chevronRight" :size="16" />
