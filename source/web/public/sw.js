@@ -1,4 +1,4 @@
-const SW_VERSION = '1.4.6'
+const SW_VERSION = '1.5.0'
 
 self.addEventListener('install', (event) => {
   console.info(`[MailDesk SW] v${SW_VERSION} installing`)
