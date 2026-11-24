@@ -376,8 +376,8 @@ func (p *PushService) removeSubscriptions(endpoints []string) error {
 }
 
 func buildPushPayload(email *Email) []byte {
-	subject := firstNonEmpty(email.SubjectZh, email.Subject, "新邮件")
-	body := firstNonEmpty(strings.TrimSpace(email.Summary), email.Snippet, subject)
+	subject := firstNonEmpty(sanitizeSubjectZh(email.SubjectZh), email.Subject, "新邮件")
+	body := firstNonEmpty(sanitizeSummary(email.Summary), email.Snippet, subject)
 	message := pushMessage{
 		Title: truncate(subject, 120),
 		Body:  truncate(body, 240),

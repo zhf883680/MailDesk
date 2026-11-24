@@ -854,11 +854,19 @@ func (s *Server) emailView(id string) *Email {
 	if e == nil {
 		return nil
 	}
+	// 旧版本可能把模型跑题时的聊天回复写进了标题/摘要/译文，这里统一兜底清洗。
+	e.SubjectZh = sanitizeSubjectZh(e.SubjectZh)
+	e.Summary = sanitizeSummary(e.Summary)
 	if e.TranslatedHTML != "" {
 		e.TranslatedHTML = cleanTranslatedHTML(e.TranslatedHTML)
 		if text := htmlToText(e.TranslatedHTML); text != "" {
 			e.Translated = truncate(text, 60000)
 		}
+	}
+	if looksLikeChatter(e.Translated) || strings.Count(e.Translated, "**") >= 2 {
+		e.Translated = ""
+		e.TranslatedHTML = ""
+		e.TranslatedMD = ""
 	}
 	e.NeedAction = e.EffectiveNeedAction()
 	cfg := s.cm.Get()

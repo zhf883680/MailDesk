@@ -131,9 +131,9 @@ func (e *Email) EffectiveAdIgnored() bool {
 
 func (e *Email) ToSummary() EmailSummary {
 	return EmailSummary{
-		ID: e.ID, MailboxID: e.MailboxID, Subject: e.Subject, SubjectZh: e.SubjectZh, FromName: e.FromName,
+		ID: e.ID, MailboxID: e.MailboxID, Subject: e.Subject, SubjectZh: sanitizeSubjectZh(e.SubjectZh), FromName: e.FromName,
 		FromAddr: e.FromAddr, Date: e.Date, Snippet: e.Snippet, Seen: e.Seen,
-		Flagged: e.Flagged, AIStatus: e.AIStatus, Summary: e.Summary,
+		Flagged: e.Flagged, AIStatus: e.AIStatus, Summary: sanitizeSummary(e.Summary),
 		Importance: e.Importance, NeedAction: e.EffectiveNeedAction(), IsAd: e.EffectiveIsAd(),
 		Category: e.Category, HasTrans: e.Translated != "" || e.TranslatedHTML != "" || e.TranslatedMD != "", RuleCount: len(e.RuleResults),
 		Forwarded: e.Forwarded, Handled: e.Handled, AdIgnored: e.EffectiveAdIgnored(),
